@@ -11,6 +11,39 @@ const status = document.getElementById("status");
 const notice = document.getElementById("notice");
 const pose = window.VN100Pose.create(document.getElementById("pose"));
 let latestAttitude = null;
+const startRecording = document.getElementById("start-recording");
+const stopRecording = document.getElementById("stop-recording");
+let recordingBusy = false, recordingState = null, sensorLive = false, piReachable = false, recordingCommandError = "";
+function showRecording() {
+  const rec = recordingState;
+  startRecording.disabled = recordingBusy || !piReachable || !sensorLive || !rec?.available || rec.active;
+  stopRecording.disabled = recordingBusy || !piReachable || !rec?.active;
+  document.getElementById("recording-status").textContent = !piReachable ? "Status Unknown" :
+    rec?.error ? "Recording Error" : rec?.active ? "Recording" : rec?.path ? "Saved" : "Ready";
+  document.getElementById("recording-detail").textContent = !piReachable ?
+    "Pi unreachable. Recording may still be running on the Pi; reconnect to check its status." : rec?.active ?
+    `${rec.rows.toLocaleString()} rows · recording continues if this page closes. Sensor gaps add no rows.` :
+    rec?.path ? `${rec.rows.toLocaleString()} rows · ${rec.error ? "file may be incomplete" : "CSV saved on the Pi"}.` :
+    "CSV files are saved on the Pi. Live display continues while recording.";
+  document.getElementById("recording-path").textContent = rec?.path || "";
+  document.getElementById("recording-error").textContent = rec?.error || recordingCommandError;
+}
+async function controlRecording(action) {
+  recordingCommandError = ""; recordingBusy = true; showRecording();
+  try {
+    const response = await fetch(`/api/recording/${action}`, { method: "POST", signal: AbortSignal.timeout(5000) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Recording command failed");
+    recordingState = result;
+  } catch (error) {
+    recordingCommandError = `${error.message}. Check recording status before retrying.`;
+  } finally {
+    recordingBusy = false;
+    showRecording();
+  }
+}
+startRecording.addEventListener("click", () => controlRecording("start"));
+stopRecording.addEventListener("click", () => controlRecording("stop"));
 const alignView = document.getElementById("align-view");
 const resetView = document.getElementById("reset-view");
 const viewReference = document.getElementById("view-reference");
@@ -100,6 +133,9 @@ function receive(data) {
       const latestTime = history[history.length - 1].received_ms;
       history = history.filter(sample => sample.received_ms >= latestTime - 60000).slice(-2400);
     }
+    recordingState = data.recording || null;
+    piReachable = true; sensorLive = data.status === "live";
+    showRecording();
     status.textContent = ({ live: "Live", stale: "Data Stale", disconnected: "Sensor Disconnected", waiting: "Waiting for Sensor" })[data.status];
     status.className = `badge ${data.status}`;
     document.getElementById("counts").textContent = `${data.received.toLocaleString()} / ${data.rejected.toLocaleString()}`;
@@ -128,6 +164,7 @@ const source = new EventSource("/api/events");
 let lastMessageAt = performance.now();
 source.onmessage = event => { lastMessageAt = performance.now(); receive(JSON.parse(event.data)); };
 source.onerror = () => {
+  piReachable = false; showRecording();
   status.textContent = "Pi Unreachable"; status.className = "badge disconnected";
   notice.textContent = "Cannot reach the Pi. Retrying automatically; displayed values are historical.";
   pose.update(latestAttitude, "disconnected");

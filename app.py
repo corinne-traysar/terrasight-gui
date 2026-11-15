@@ -24,6 +24,29 @@ class Handler(BaseHTTPRequestHandler):
         self.measurements = measurements
         super().__init__(*args, **kwargs)
 
+    def do_POST(self):
+        # Browser controls must originate from this GUI, including its port.
+        if self.headers.get("Origin") != "http://" + self.headers.get("Host", ""):
+            self.send_error(403, "Recording controls require the same GUI origin")
+            return
+        action = {"/api/recording/start": self.measurements.start_recording,
+                  "/api/recording/stop": self.measurements.stop_recording}.get(self.path)
+        if action is None:
+            self.send_error(404)
+            return
+        try:
+            result = action()
+            code = 500 if result["error"] else 200
+        except ValueError as error:
+            result, code = {"error": str(error)}, 409
+        content = json.dumps(result, allow_nan=False).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(content)
+
     def do_GET(self):
         url = urlsplit(self.path)
         if url.path == "/api/events":
@@ -93,8 +116,9 @@ def main():
     parser.add_argument("--baud", type=int, default=115200, choices=[115200])
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--recording-dir", type=Path, default=Path.home() / "terrasight-bench" / "captures")
     args = parser.parse_args()
-    measurements = Measurements()
+    measurements = Measurements(recording_directory=args.recording_dir)
     server = make_server(args.host, args.port, measurements)
     reader = VN100Reader(args.device, measurements, baud=args.baud)
     reader.start()
@@ -106,6 +130,7 @@ def main():
     finally:
         server.server_close()
         reader.stop()
+        measurements.stop_recording()
 
 
 if __name__ == "__main__":

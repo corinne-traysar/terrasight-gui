@@ -10,6 +10,8 @@ import threading
 import time
 import uuid
 
+from recording import CSVRecording
+
 
 GROUPS = ("attitude", "magnetic", "acceleration", "angular_rate")
 
@@ -57,7 +59,8 @@ class PacketStream:
 class Measurements:
     """Thread-safe bounded history and current connection state."""
 
-    def __init__(self, capacity=2400, stale_after=1.0):
+    def __init__(self, capacity=2400, stale_after=1.0, recording_directory=None):
+        self.recording = CSVRecording(recording_directory)
         self.samples = deque(maxlen=capacity)
         self.capacity = capacity
         self.stale_after = stale_after
@@ -86,6 +89,24 @@ class Measurements:
             self.last_received = time.monotonic()
             sample = dict(values, sequence=self.sequence, received_ms=time.time() * 1000)
             self.samples.append(sample)
+            self.recording.write(sample)
+
+    def start_recording(self):
+        with self.lock:
+            if not self.recording.snapshot()['active']:
+                if not self.opened or self.last_received is None or time.monotonic() - self.last_received > self.stale_after:
+                    raise ValueError('Wait for live sensor data before recording')
+                self.recording.start()
+                print("CSV recording: " + str(self.recording.path), flush=True)
+            return self.recording.snapshot()
+
+    def stop_recording(self):
+        with self.lock:
+            was_active = self.recording.file is not None
+            self.recording.stop()
+            if was_active:
+                print("CSV recording stopped: %s (%d rows)" % (self.recording.path, self.recording.rows), flush=True)
+            return self.recording.snapshot()
 
     def snapshot(self, after=0):
         with self.lock:
@@ -94,6 +115,7 @@ class Measurements:
                 "waiting" if age is None else ("stale" if age > self.stale_after else "live"))
             oldest = self.samples[0]["sequence"] if self.samples else 0
             return {
+                "recording": self.recording.snapshot(),
                 "session": self.session,
                 "status": state,
                 "error": self.error,

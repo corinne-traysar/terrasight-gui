@@ -16,6 +16,16 @@
     <div><span>Valid / Rejected</span><strong id="counts">—</strong></div>
   </section>
   <p id="notice" class="notice">Waiting for the Pi. Historical values will remain visible if live data stops.</p>
+  <article class="recording-panel" aria-label="CSV Recording">
+    <div class="panel-head"><h2>CSV Recording</h2><span id="recording-status" class="unit" role="status">Checking</span></div>
+    <div class="pose-controls">
+      <button id="start-recording" type="button" disabled>Start Recording</button>
+      <button id="stop-recording" type="button" disabled>Stop Recording</button>
+    </div>
+    <p id="recording-detail" class="pose-caption">CSV files are saved on the Pi. Live display continues while recording.</p>
+    <p id="recording-path" class="recording-path"></p>
+    <p id="recording-error" class="recording-error" role="alert"></p>
+  </article>
   <article class="orientation-panel">
     <div class="panel-head"><h2>Sensor Orientation</h2><span class="unit" id="pose-status">Waiting</span></div>
     <canvas id="pose" role="img" aria-label="Waiting for attitude measurements"></canvas>
@@ -32,5 +42,5 @@
   </article>
   <main id="plots"></main>
   <footer>Last 60 seconds · timestamps are Pi receipt times · values are calibrated/compensated measurements and calculated attitude.
-    <br>This first version displays data without recording it. Existing capture files are unchanged.</footer>
+    <br>Recording saves validated samples on the Pi, with Pi receipt timestamps. View alignment does not change recorded values.</footer>
 </body></html>
