@@ -19,7 +19,11 @@
   <article class="orientation-panel">
     <div class="panel-head"><h2>Sensor Orientation</h2><span class="unit" id="pose-status">Waiting</span></div>
     <canvas id="pose" role="img" aria-label="Waiting for attitude measurements"></canvas>
-    <p class="pose-caption">Schematic sensor · colored axes rotate with the sensor; N/E/D stays fixed.<br>Pose uses reported yaw, pitch, and roll. Axis correspondence to the physical sensor still needs a bench check.</p>
+    <p class="pose-caption">VN-100 rugged housing · connector on −X · colored axes follow the sensor.<br>Illustrative model. Physical axis correspondence still needs a bench check.</p>
+    <details class="housing-reference"><summary>Housing Reference</summary>
+      <img src="/vn100-reference.png" alt="Provided reference showing the red rugged VN-100 housing, its connector and mounting tabs, alongside the silver SMD version">
+      <p class="pose-caption">The red rugged unit is represented by the rotating model.</p>
+    </details>
   </article>
   <main id="plots"></main>
   <footer>Last 60 seconds · timestamps are Pi receipt times · values are calibrated/compensated measurements and calculated attitude.

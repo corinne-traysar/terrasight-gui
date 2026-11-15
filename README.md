@@ -54,6 +54,8 @@ It runs the actual browser code with a deterministic 40 Hz input and verifies th
 
 `pose.cjs` checks the right-handed body-to-NED 3-2-1 rotation: positive yaw turns +X toward +Y, positive pitch turns +X toward -Z, and positive roll turns +Y toward +Z. The canvas renderer uses that matrix directly, with no additional attitude filtering. Physical axis correspondence still requires a controlled movement check against the sensor's markings and any configured reference-frame rotation.
 
+The illustrative rugged housing follows the supplied product image: red chamfered casing, silver mounting tabs, black connector and gold contacts. Connector placement on -X and the side tabs follow VectorNav's [public mechanical drawing](https://www.vectornav.com/docs/default-source/mechanical-drawings/vn-100-cr-asm_v7.0.0.pdf). The supplied image is included unchanged in the expandable Housing Reference. The model is a visual aid, not a dimensional CAD model.
+
 The tests use pseudo-terminals to check fragmentation and device replacement without touching the physical sensor. Physical movement response, accuracy, Ethernet connectivity, and combined-sensor operation require separate bench checks.
 
 ## Data and Credentials

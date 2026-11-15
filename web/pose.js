@@ -20,16 +20,40 @@
     const view = normalize([4, -6, -4]);
     const right = normalize(cross(view, [0, 0, -1]));
     const up = cross(right, view);
-    const vertices = [[-1.2, -.75, -.22], [1.2, -.75, -.22], [1.2, .75, -.22], [-1.2, .75, -.22],
-      [-1.2, -.75, .22], [1.2, -.75, .22], [1.2, .75, .22], [-1.2, .75, .22]];
-    const faces = [
-      { ids: [0, 1, 2, 3], color: "#c64246", normal: [0, 0, -1], top: true },
-      { ids: [4, 5, 6, 7], color: "#632b35", normal: [0, 0, 1] },
-      { ids: [0, 1, 5, 4], color: "#8c303a", normal: [0, -1, 0] },
-      { ids: [3, 2, 6, 7], color: "#9f3640", normal: [0, 1, 0] },
-      { ids: [0, 3, 7, 4], color: "#732d38", normal: [-1, 0, 0] },
-      { ids: [1, 2, 6, 5], color: "#a33740", normal: [1, 0, 0] },
-    ];
+    // Illustrative rugged housing based on the supplied photo and VN-100-CR-ASM.
+    // +X is away from the connector; the two mounting tabs extend along +/-Y.
+    const faces = [];
+    function extrude(outline, top, bottom, color, side, tag) {
+      faces.push({ points: outline.map(([x, y]) => [x, y, top]), color, normal: [0, 0, -1], tag });
+      faces.push({ points: outline.map(([x, y]) => [x, y, bottom]), color: side, normal: [0, 0, 1] });
+      outline.forEach(([x, y], i) => {
+        const [nx, ny] = outline[(i + 1) % outline.length];
+        faces.push({ points: [[x, y, top], [nx, ny, top], [nx, ny, bottom], [x, y, bottom]],
+          color: side, normal: normalize([ny - y, x - nx, 0]) });
+      });
+    }
+    const box = (x0, y0, x1, y1, top, bottom, color, side, tag) =>
+      extrude([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], top, bottom, color, side, tag);
+    const outline = [[-1, -.68], [-.76, -.94], [.98, -.94], [1, -.92], [1, .92], [.98, .94], [-.76, .94], [-1, .68]];
+    extrude(outline, .20, .32, "#a4a8a9", "#737d83");
+    for (const direction of [-1, 1]) {
+      const y = direction * 1.13;
+      const tab = Array.from({ length: 18 }, (_, i) => {
+        const angle = i * Math.PI * 2 / 18;
+        return [-.10 + .29 * Math.cos(angle), y + .22 * Math.sin(angle)];
+      });
+      extrude(tab, .20, .30, "#aeb3b4", "#69777e", direction === -1 ? "tab-left" : "tab-right");
+    }
+    extrude(outline, -.32, .20, "#bc2e48", "#842439");
+    // A thin lid seam makes the casing recognizable in side views.
+    extrude(outline.map(([x, y]) => [x * 1.008, y * 1.008]), -.32, -.27, "#c73750", "#a72d46", "case-top");
+    box(-1.41, -.74, -1.00, .74, -.03, .28, "#3a424a", "#202b34", "connector-top");
+    box(-1.425, -.47, -1.415, .47, .015, .24, "#151e24", "#0e151c");
+    // Ten gold contacts on the connector's -X-facing surface.
+    for (const y of [-.35, -.175, 0, .175, .35]) for (const z of [.065, .18]) {
+      box(-1.46, y - .017, -1.426, y + .017, z - .015, z + .015, "#dcb95d", "#9a7b37");
+    }
+    for (const y of [-.60, .60]) box(-1.44, y - .075, -1.40, y + .075, .04, .22, "#88959c", "#657078");
 
     function draw() {
       const width = Math.max(1, canvas.clientWidth), height = canvas.clientHeight;
@@ -70,23 +94,33 @@
       }
       ctx.save(); ctx.globalAlpha = state === "live" ? 1 : .45;
       const matrix = rotation(...attitude);
-      const world = vertices.map(point => transform(matrix, point));
       const visible = faces.filter(face => dot(transform(matrix, face.normal), view) > 0)
-        .sort((a, b) => a.ids.reduce((sum, i) => sum + dot(world[i], view), 0) - b.ids.reduce((sum, i) => sum + dot(world[i], view), 0));
+        .map(face => ({ ...face, world: face.points.map(point => transform(matrix, point)) }));
+      visible.sort((a, b) => a.world.reduce((sum, p) => sum + dot(p, view), 0) / a.world.length -
+        b.world.reduce((sum, p) => sum + dot(p, view), 0) / b.world.length);
       for (const face of visible) {
-        const points = face.ids.map(index => project(world[index]));
-        ctx.fillStyle = face.color; ctx.strokeStyle = "#e47b7d"; ctx.lineWidth = 1;
+        const points = face.world.map(project);
+        ctx.fillStyle = face.color; ctx.strokeStyle = "#ffffff20"; ctx.lineWidth = .65;
         ctx.beginPath(); ctx.moveTo(...points[0]); points.slice(1).forEach(point => ctx.lineTo(...point)); ctx.closePath(); ctx.fill(); ctx.stroke();
-        if (face.top) {
-          const origin = project(transform(matrix, [0, 0, -.225]));
-          const x = project(transform(matrix, [1, 0, -.225]));
-          const y = project(transform(matrix, [0, 1, -.225]));
+        if (face.tag === "case-top" || face.tag?.startsWith("tab-")) {
+          const z = face.tag === "case-top" ? -.325 : .195;
+          const origin = project(transform(matrix, [0, 0, z]));
+          const x = project(transform(matrix, [1, 0, z]));
+          const y = project(transform(matrix, [0, 1, z]));
           ctx.save(); ctx.transform(x[0] - origin[0], x[1] - origin[1], y[0] - origin[0], y[1] - origin[1], ...origin);
-          ctx.fillStyle = "#fff1eb"; ctx.font = "bold .26px sans-serif"; ctx.textAlign = "center";
-          ctx.fillText("VN-100", 0, .04);
-          ctx.font = ".12px sans-serif"; ctx.fillText("+X →", .66, -.39);
-          for (const x of [-1.02, 1.02]) for (const y of [-.57, .57]) {
-            ctx.fillStyle = "#241d25"; ctx.beginPath(); ctx.arc(x, y, .055, 0, 2 * Math.PI); ctx.fill();
+          if (face.tag === "case-top") {
+            // Top artwork aligns toward +X, as on the reference housing.
+            ctx.rotate(-Math.PI / 2); ctx.fillStyle = "#f0e8e4"; ctx.strokeStyle = "#f0e8e4"; ctx.lineWidth = .022;
+            for (const triangle of [[[-.37, -.05], [-.10, -.05], [-.23, -.31]], [[.10, -.05], [.37, -.05], [.23, -.31]],
+              [[-.13, -.28], [0, -.51], [.13, -.28], [0, -.12]]]) {
+              ctx.beginPath(); ctx.moveTo(...triangle[0]); triangle.slice(1).forEach(p => ctx.lineTo(...p)); ctx.closePath(); ctx.stroke();
+            }
+            ctx.font = "600 .16px sans-serif"; ctx.textAlign = "center"; ctx.fillText("VECTORNAV", 0, .20);
+            ctx.font = ".10px sans-serif"; ctx.fillText("VN-100", 0, .44);
+          } else {
+            const y = face.tag === "tab-left" ? -1.13 : 1.13;
+            ctx.fillStyle = "#242e35"; ctx.beginPath(); ctx.arc(-.10, y, .10, 0, 2 * Math.PI); ctx.fill();
+            ctx.strokeStyle = "#d1d5d6"; ctx.lineWidth = .025; ctx.stroke();
           }
           ctx.restore();
         }

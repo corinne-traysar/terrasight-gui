@@ -15,6 +15,7 @@ from vn100 import Measurements, VN100Reader
 WEB = Path(__file__).parent / "web"
 FILES = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"),
          "/pose.js": ("pose.js", "text/javascript"),
+         "/vn100-reference.png": ("vn100-reference.png", "image/png"),
          "/style.css": ("style.css", "text/css")}
 
 
@@ -45,7 +46,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         self.send_response(200)
-        self.send_header("Content-Type", content_type + "; charset=utf-8")
+        self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type != "image/png" else ""))
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
