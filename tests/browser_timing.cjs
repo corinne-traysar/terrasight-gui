@@ -37,7 +37,8 @@ module.exports = (async () => {
     return task;
   };
   const sandbox = {
-    document, window: { devicePixelRatio: 1, addEventListener: noop }, console,
+    document, window: { devicePixelRatio: 1, addEventListener: noop,
+      VN100Pose: { create: () => ({ draw: noop, update: noop }) } }, console,
     setTimeout: schedule, clearTimeout: task => { task.cancelled = true; },
     requestAnimationFrame: fn => schedule(() => fn(now), 16),
     performance: { now: () => now },

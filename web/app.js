@@ -9,6 +9,8 @@ const groups = [
 const colors = ["#73d8c2", "#e8b775", "#97acff"];
 const status = document.getElementById("status");
 const notice = document.getElementById("notice");
+const pose = window.VN100Pose.create(document.getElementById("pose"));
+let latestAttitude = null;
 const panels = groups.map(group => {
   const article = document.createElement("article");
   article.innerHTML = `<div class="panel-head"><h2>${group.title}</h2><span class="unit">${group.unit}</span></div>
@@ -26,6 +28,7 @@ function queueDraw() {
 }
 
 function draw() {
+  pose.draw();
   for (const panel of panels) {
     const { canvas, group } = panel;
     const width = Math.max(1, canvas.clientWidth), height = canvas.clientHeight;
@@ -94,6 +97,10 @@ function receive(data) {
     if (data.latest) for (const panel of panels) panel.values.forEach((element, axis) => {
       element.textContent = data.latest[panel.group.key][axis].toFixed(panel.group.digits);
     });
+    latestAttitude = data.latest?.attitude || null;
+    pose.update(latestAttitude, data.status);
+    document.getElementById("pose-status").textContent = !latestAttitude ? "Waiting" :
+      (data.status === "live" ? "Live Pose" : "Last Received Pose");
     queueDraw();
   } catch (error) {
     status.textContent = "Invalid Data"; status.className = "badge disconnected";
@@ -107,6 +114,9 @@ source.onmessage = event => { lastMessageAt = performance.now(); receive(JSON.pa
 source.onerror = () => {
   status.textContent = "Pi Unreachable"; status.className = "badge disconnected";
   notice.textContent = "Cannot reach the Pi. Retrying automatically; displayed values are historical.";
+  pose.update(latestAttitude, "disconnected");
+  document.getElementById("pose-status").textContent = latestAttitude ? "Last Received Pose" : "Waiting";
+  queueDraw();
 };
 function watchConnection() {
   if (performance.now() - lastMessageAt > 1500) source.onerror();

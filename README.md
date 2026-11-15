@@ -17,6 +17,7 @@ Press Ctrl+C in the Pi terminal to stop. The application retries the stable seri
 ## First Milestone
 
 - Live values and plots for attitude, magnetic field, acceleration, and angular rate.
+- A schematic 3D sensor pose driven by reported yaw/pitch/roll, with sensor XYZ axes and a fixed NED reference. Stale poses are dimmed and labeled as historical. It shows orientation, not position or translation.
 - Live, waiting, stale, disconnected, and Pi-unreachable states.
 - A 60-second browser history, capped at 2,400 samples. The Pi also retains at most 2,400 samples. This is display history, not a lossless recording.
 - Serial input is validated before use. No sensor configuration commands are transmitted.
@@ -46,9 +47,12 @@ The browser cadence regression check requires Node.js for development only:
 
 ```bash
 node tests/browser_timing.cjs
+node tests/pose.cjs
 ```
 
 It runs the actual browser code with a deterministic 40 Hz input and verifies that displayed values update at least 15 times per second, with no healthy-input gap above 100 ms. The original request/response polling loop fails with a 200 ms gap even before network latency is added.
+
+`pose.cjs` checks the right-handed body-to-NED 3-2-1 rotation: positive yaw turns +X toward +Y, positive pitch turns +X toward -Z, and positive roll turns +Y toward +Z. The canvas renderer uses that matrix directly, with no additional attitude filtering. Physical axis correspondence still requires a controlled movement check against the sensor's markings and any configured reference-frame rotation.
 
 The tests use pseudo-terminals to check fragmentation and device replacement without touching the physical sensor. Physical movement response, accuracy, Ethernet connectivity, and combined-sensor operation require separate bench checks.
 

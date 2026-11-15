@@ -14,6 +14,7 @@ from vn100 import Measurements, VN100Reader
 
 WEB = Path(__file__).parent / "web"
 FILES = {"/": ("index.html", "text/html"), "/app.js": ("app.js", "text/javascript"),
+         "/pose.js": ("pose.js", "text/javascript"),
          "/style.css": ("style.css", "text/css")}
 
 
