@@ -23,8 +23,8 @@
     // Illustrative rugged housing based on the supplied photo and VN-100-CR-ASM.
     // +X is away from the connector; the two mounting tabs extend along +/-Y.
     const faces = [];
-    function extrude(outline, top, bottom, color, side, tag) {
-      faces.push({ points: outline.map(([x, y]) => [x, y, top]), color, normal: [0, 0, -1], tag });
+    function extrude(outline, top, bottom, color, side, tag, openTop = false) {
+      if (!openTop) faces.push({ points: outline.map(([x, y]) => [x, y, top]), color, normal: [0, 0, -1], tag });
       faces.push({ points: outline.map(([x, y]) => [x, y, bottom]), color: side, normal: [0, 0, 1] });
       outline.forEach(([x, y], i) => {
         const [nx, ny] = outline[(i + 1) % outline.length];
@@ -44,7 +44,7 @@
       });
       extrude(tab, .20, .30, "#aeb3b4", "#69777e", direction === -1 ? "tab-left" : "tab-right");
     }
-    extrude(outline, -.32, .20, "#bc2e48", "#842439");
+    extrude(outline, -.32, .20, "#bc2e48", "#842439", undefined, true);
     // A thin lid seam makes the casing recognizable in side views.
     extrude(outline.map(([x, y]) => [x * 1.008, y * 1.008]), -.32, -.27, "#c73750", "#a72d46", "case-top");
     box(-1.41, -.74, -1.00, .74, -.03, .28, "#3a424a", "#202b34", "connector-top");
