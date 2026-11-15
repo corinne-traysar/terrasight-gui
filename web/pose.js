@@ -14,6 +14,8 @@
   }
 
   const transform = (matrix, point) => matrix.map(row => dot(row, point));
+  // Bench observation: reverse the visual roll direction only. Keep sensor values intact.
+  const displayRotation = ([yaw, pitch, roll]) => rotation(yaw, pitch, -roll);
 
   function create(canvas) {
     let attitude = null, state = "waiting";
@@ -93,7 +95,7 @@
         return;
       }
       ctx.save(); ctx.globalAlpha = state === "live" ? 1 : .45;
-      const matrix = rotation(...attitude);
+      const matrix = displayRotation(attitude);
       const visible = faces.filter(face => dot(transform(matrix, face.normal), view) > 0)
         .map(face => ({ ...face, world: face.points.map(point => transform(matrix, point)) }));
       visible.sort((a, b) => a.world.reduce((sum, p) => sum + dot(p, view), 0) / a.world.length -
@@ -142,7 +144,7 @@
     } };
   }
 
-  const api = { rotation, transform, create };
+  const api = { rotation, displayRotation, transform, create };
   root.VN100Pose = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
