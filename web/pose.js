@@ -14,14 +14,18 @@
   }
 
   const transform = (matrix, point) => matrix.map(row => dot(row, point));
-  // Bench observation: reverse the visual roll direction only. Keep sensor values intact.
-  const displayRotation = ([yaw, pitch, roll]) => rotation(yaw, pitch, -roll);
+  const displayRotation = attitude => rotation(...attitude);
+
+  function cameraAxes() {
+    const view = normalize([4, -6, -4]);
+    // right x up must point toward the camera, otherwise the scene is mirrored.
+    const right = normalize(cross([0, 0, -1], view));
+    return { view, right, up: cross(view, right) };
+  }
 
   function create(canvas) {
     let attitude = null, state = "waiting";
-    const view = normalize([4, -6, -4]);
-    const right = normalize(cross(view, [0, 0, -1]));
-    const up = cross(right, view);
+    const { view, right, up } = cameraAxes();
     // Illustrative rugged housing based on the supplied photo and VN-100-CR-ASM.
     // +X is away from the connector; the two mounting tabs extend along +/-Y.
     const faces = [];
@@ -144,7 +148,7 @@
     } };
   }
 
-  const api = { rotation, displayRotation, transform, create };
+  const api = { rotation, displayRotation, cameraAxes, transform, create };
   root.VN100Pose = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);
