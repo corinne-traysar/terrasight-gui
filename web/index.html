@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Terrasight Bench Test</title><link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header><div><div class="eyebrow">TERRASIGHT / BENCH TEST</div><h1>VN-100 Live Measurements</h1>
+    <p>Acquired and decoded on the Raspberry Pi · displayed on your computer</p></div>
+    <div id="status" role="status" class="badge waiting">Connecting</div></header>
+  <section class="summary" aria-label="Connection Details">
+    <div><span>Sensor</span><strong>VectorNav VN-100</strong></div>
+    <div><span>Connection</span><strong>USB · 115200 baud</strong></div>
+    <div><span>Last sample</span><strong id="last">Waiting</strong></div>
+    <div><span>Valid / Rejected</span><strong id="counts">—</strong></div>
+  </section>
+  <p id="notice" class="notice">Waiting for the Pi. Historical values will remain visible if live data stops.</p>
+  <main id="plots"></main>
+  <footer>Last 60 seconds · timestamps are Pi receipt times · values are calibrated/compensated measurements and calculated attitude.
+    <br>This first version displays data without recording it. Existing capture files are unchanged.</footer>
+</body></html>
