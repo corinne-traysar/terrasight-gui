@@ -23,7 +23,7 @@ Press Ctrl+C in the Pi terminal to stop. The application retries the stable seri
 
 VNYMR fields follow VectorNav UM001, section “Yaw, Pitch, Roll, Magnetic, Acceleration, and Angular Rates”: yaw/pitch/roll in degrees; magnetic XYZ in gauss; acceleration XYZ in m/s²; angular-rate XYZ in rad/s. These are compensated measurements and calculated attitude, not unprocessed internal MEMS readings. [VectorNav manual](https://www.eol.ucar.edu/sites/default/files/files_live/private/VN100manual.pdf).
 
-Timestamps are Pi receive times, not sensor sample timestamps. Several packets can arrive in one serial read, so their receive times may match. Browser polling runs at up to five updates per second; acquisition processes every received valid VNYMR packet independently. Plot gaps mark missing sequences or receive-time gaps over one second. Units and values are passed through without conversion.
+Timestamps are Pi receive times, not sensor sample timestamps. Several packets can arrive in one serial read, so their receive times may match. A continuous server-sent event connection sends batches up to 20 times per second; acquisition processes every received valid VNYMR packet independently. Drawing follows the browser's animation frames. Plot axes expand for new extremes and stay stable for the session; reloading resets their ranges. Plot gaps mark missing sequences or receive-time gaps over one second. Units and values are passed through without conversion or smoothing.
 
 ## Code Organization
 
@@ -34,13 +34,21 @@ Timestamps are Pi receive times, not sensor sample timestamps. Several packets c
 | `web/` | Browser-only values, plots, and connection status |
 | `tests/` | Real captured packet fixture, stream framing, state, HTTP delivery, and serial reconnection |
 
-`VN100Reader` owns the serial file descriptor and writes decoded samples to `Measurements`. HTTP requests read snapshots using a sequence cursor. There is no database, generic sensor framework, or separate deployment. Other sensors and recording controls will be added in later steps when their requirements are known.
+`VN100Reader` owns the serial file descriptor and writes decoded samples to `Measurements`. `/api/events` streams measurement batches using a sequence cursor; `/api/samples?after=N` remains available for diagnostics. The stream disables TCP buffering delays and the browser reconnects automatically. There is no database, generic sensor framework, or separate deployment. Other sensors and recording controls will be added in later steps when their requirements are known.
 
 ## Test
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+The browser cadence regression check requires Node.js for development only:
+
+```bash
+node tests/browser_timing.cjs
+```
+
+It runs the actual browser code with a deterministic 40 Hz input and verifies that displayed values update at least 15 times per second, with no healthy-input gap above 100 ms. The original request/response polling loop fails with a 200 ms gap even before network latency is added.
 
 The tests use pseudo-terminals to check fragmentation and device replacement without touching the physical sensor. Physical movement response, accuracy, Ethernet connectivity, and combined-sensor operation require separate bench checks.
 

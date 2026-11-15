@@ -5,6 +5,8 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import socket
+import time
 from urllib.parse import parse_qs, urlsplit
 
 from vn100 import Measurements, VN100Reader
@@ -22,6 +24,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlsplit(self.path)
+        if url.path == "/api/events":
+            self.stream_events()
+            return
         if url.path == "/api/samples":
             try:
                 after = int(parse_qs(url.query).get("after", ["0"])[0])
@@ -47,6 +52,27 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.wfile.write(content)
         except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def stream_events(self):
+        # Keep one connection open: Wi-Fi round trips do not gate every update.
+        self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.connection.settimeout(5)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        after = 0
+        try:
+            while True:
+                snapshot = self.measurements.snapshot(after)
+                content = json.dumps(snapshot, allow_nan=False, separators=(",", ":"))
+                self.wfile.write(("data: " + content + "\n\n").encode())
+                self.wfile.flush()
+                after = snapshot["received"]
+                time.sleep(.05)
+        except (OSError, TimeoutError):
             pass
 
     def log_message(self, format, *args):

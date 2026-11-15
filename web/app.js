@@ -1,10 +1,10 @@
 "use strict";
 
 const groups = [
-  { key: "attitude", title: "Attitude", unit: "deg", labels: ["Yaw", "Pitch", "Roll"], digits: 2 },
-  { key: "magnetic", title: "Magnetic Field", unit: "gauss", labels: ["X", "Y", "Z"], digits: 4 },
-  { key: "acceleration", title: "Acceleration", unit: "m/s²", labels: ["X", "Y", "Z"], digits: 3 },
-  { key: "angular_rate", title: "Angular Rate", unit: "rad/s", labels: ["X", "Y", "Z"], digits: 5 },
+  { key: "attitude", title: "Attitude", unit: "deg", labels: ["Yaw", "Pitch", "Roll"], digits: 2, minSpan: 20 },
+  { key: "magnetic", title: "Magnetic Field", unit: "gauss", labels: ["X", "Y", "Z"], digits: 4, minSpan: .2 },
+  { key: "acceleration", title: "Acceleration", unit: "m/s²", labels: ["X", "Y", "Z"], digits: 3, minSpan: 4 },
+  { key: "angular_rate", title: "Angular Rate", unit: "rad/s", labels: ["X", "Y", "Z"], digits: 5, minSpan: .1 },
 ];
 const colors = ["#73d8c2", "#e8b775", "#97acff"];
 const status = document.getElementById("status");
@@ -17,21 +17,34 @@ const panels = groups.map(group => {
   document.getElementById("plots").append(article);
   return { group, canvas: article.querySelector("canvas"), values: article.querySelectorAll("strong") };
 });
-let history = [], after = 0, session = null;
+let history = [], after = 0, session = null, drawPending = false;
+
+function queueDraw() {
+  if (drawPending) return;
+  drawPending = true;
+  requestAnimationFrame(() => { drawPending = false; draw(); });
+}
 
 function draw() {
   for (const panel of panels) {
     const { canvas, group } = panel;
     const width = Math.max(1, canvas.clientWidth), height = canvas.clientHeight;
     const ratio = window.devicePixelRatio || 1;
-    canvas.width = width * ratio; canvas.height = height * ratio;
-    const ctx = canvas.getContext("2d"); ctx.scale(ratio, ratio);
+    if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+      canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+    }
+    const ctx = canvas.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
     const left = 56, right = width - 10, top = 12, bottom = height - 25;
     const values = history.flatMap(sample => sample[group.key]);
-    let min = values.length ? Math.min(...values) : -1;
-    let max = values.length ? Math.max(...values) : 1;
-    const pad = Math.max((max - min) * .12, group.key === "angular_rate" ? .001 : .01);
-    min -= pad; max += pad;
+    const low = values.length ? Math.min(...values) : -group.minSpan / 2;
+    const high = values.length ? Math.max(...values) : group.minSpan / 2;
+    // Expand to include new extremes; keep axes stable during this session.
+    if (!panel.range || low < panel.range[0] || high > panel.range[1]) {
+      const span = Math.max(high - low, group.minSpan), middle = (low + high) / 2;
+      panel.range = [Math.min(panel.range?.[0] ?? Infinity, middle - span * .62),
+        Math.max(panel.range?.[1] ?? -Infinity, middle + span * .62)];
+    }
+    const [min, max] = panel.range;
     ctx.font = "10px sans-serif";
     for (let row = 0; row < 4; row++) {
       const y = top + (bottom - top) * row / 3;
@@ -56,16 +69,11 @@ function draw() {
   }
 }
 
-async function poll() {
+function receive(data) {
   try {
-    const response = await fetch(`/api/samples?after=${after}`, { signal: AbortSignal.timeout(2500) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
     if (session !== data.session) {
-      const restarting = session !== null;
       history = []; after = 0; session = data.session;
-      // A restarted Pi application has reset sequence numbers. Refetch its history.
-      if (restarting) { setTimeout(poll, 0); return; }
+      panels.forEach(panel => { panel.range = null; });
     }
     for (const sample of data.samples) {
       if (sample.sequence > after) { history.push(sample); after = sample.sequence; }
@@ -78,7 +86,7 @@ async function poll() {
     status.className = `badge ${data.status}`;
     document.getElementById("counts").textContent = `${data.received.toLocaleString()} / ${data.rejected.toLocaleString()}`;
     document.getElementById("last").textContent = data.latest ? new Date(data.latest.received_ms).toLocaleTimeString() : "Waiting";
-    notice.textContent = data.status === "live" ? "Receiving live measurements · display refreshes five times per second"
+    notice.textContent = data.status === "live" ? "Receiving live measurements · continuous stream · up to 20 display updates per second"
       : data.status === "stale" ? "No valid measurements for more than one second. Displayed values are historical."
       : data.status === "waiting" ? "Serial port is open; waiting for a valid VNYMR packet."
       : "Sensor connection unavailable. Retrying automatically; displayed values are historical.";
@@ -86,12 +94,23 @@ async function poll() {
     if (data.latest) for (const panel of panels) panel.values.forEach((element, axis) => {
       element.textContent = data.latest[panel.group.key][axis].toFixed(panel.group.digits);
     });
-    draw();
+    queueDraw();
   } catch (error) {
-    status.textContent = "Pi Unreachable"; status.className = "badge disconnected";
-    notice.textContent = "Cannot reach the Pi. Retrying automatically; displayed values are historical.";
+    status.textContent = "Invalid Data"; status.className = "badge disconnected";
+    notice.textContent = "Received an invalid display update. Waiting for the next valid update.";
   }
-  setTimeout(poll, 200);
 }
-window.addEventListener("resize", draw);
-draw(); poll();
+
+const source = new EventSource("/api/events");
+let lastMessageAt = performance.now();
+source.onmessage = event => { lastMessageAt = performance.now(); receive(JSON.parse(event.data)); };
+source.onerror = () => {
+  status.textContent = "Pi Unreachable"; status.className = "badge disconnected";
+  notice.textContent = "Cannot reach the Pi. Retrying automatically; displayed values are historical.";
+};
+function watchConnection() {
+  if (performance.now() - lastMessageAt > 1500) source.onerror();
+  setTimeout(watchConnection, 250);
+}
+window.addEventListener("resize", queueDraw);
+queueDraw(); watchConnection();

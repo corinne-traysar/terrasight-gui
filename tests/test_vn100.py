@@ -119,6 +119,25 @@ class HTTPTests(unittest.TestCase):
                 self.assertEqual(len(json.load(response)['samples']), 1)
         self.assertEqual(self.state.snapshot()['received'], 1)
 
+    def test_continuous_stream_delivers_new_samples_without_new_requests(self):
+        with urlopen(self.url + '/api/events', timeout=2) as response:
+            self.assertEqual(response.headers['Content-Type'], 'text/event-stream')
+
+            def event():
+                while True:
+                    line = response.readline()
+                    if not line:
+                        self.fail('stream ended before the next update')
+                    if line.startswith(b'data: '):
+                        return json.loads(line[6:])
+
+            first = event()
+            self.assertEqual(first['latest']['acceleration'], [2.985, 2.457, -8.997])
+            self.state.add(decode_packet(PACKET))
+            second = event()
+            self.assertEqual([sample['sequence'] for sample in second['samples']], [2])
+            self.assertEqual(second['latest']['sequence'], 2)
+
     def test_invalid_cursor_and_unlisted_paths(self):
         for path in ('/api/samples?after=-1', '/api/samples?after=bad', '/../vn100.py'):
             with self.subTest(path=path), self.assertRaises(HTTPError):
