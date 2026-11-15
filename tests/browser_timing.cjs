@@ -10,7 +10,7 @@ module.exports = (async () => {
   const noop = () => {};
   const context = new Proxy({}, { get: () => noop, set: () => true });
   const ids = new Map();
-  const element = () => ({ textContent: '', className: '' });
+  const element = () => ({ textContent: '', className: '', addEventListener: noop });
   const document = {
     getElementById(id) {
       if (!ids.has(id)) ids.set(id, { ...element(), append: noop });

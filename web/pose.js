@@ -16,8 +16,9 @@
   const transform = (matrix, point) => matrix.map(row => dot(row, point));
   const displayRotation = attitude => rotation(...attitude);
 
-  function cameraAxes() {
-    const view = normalize([4, -6, -4]);
+  function cameraAxes(heading = Math.atan2(-6, 4) * 180 / Math.PI) {
+    const azimuth = heading * Math.PI / 180;
+    const view = normalize([Math.sqrt(52) * Math.cos(azimuth), Math.sqrt(52) * Math.sin(azimuth), -4]);
     // right x up must point toward the camera, otherwise the scene is mirrored.
     const right = normalize(cross([0, 0, -1], view));
     return { view, right, up: cross(view, right) };
@@ -25,7 +26,7 @@
 
   function create(canvas) {
     let attitude = null, state = "waiting";
-    const { view, right, up } = cameraAxes();
+    let { view, right, up } = cameraAxes();
     // Illustrative rugged housing based on the supplied photo and VN-100-CR-ASM.
     // +X is away from the connector; the two mounting tabs extend along +/-Y.
     const faces = [];
@@ -138,7 +139,14 @@
       ctx.restore();
     }
 
-    return { draw, update(values, status) {
+    return { draw, alignView() {
+      if (!attitude || state !== "live") return false;
+      // Look toward the sensor from its connector (-X), retaining real pitch/roll.
+      ({ view, right, up } = cameraAxes(attitude[0] + 180));
+      return true;
+    }, resetView() {
+      ({ view, right, up } = cameraAxes());
+    }, update(values, status) {
       attitude = values && values.length === 3 && values.every(Number.isFinite) ? values.slice() : null;
       state = status;
       const label = !attitude ? "Waiting for attitude measurements" :

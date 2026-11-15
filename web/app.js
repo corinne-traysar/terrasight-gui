@@ -11,6 +11,21 @@ const status = document.getElementById("status");
 const notice = document.getElementById("notice");
 const pose = window.VN100Pose.create(document.getElementById("pose"));
 let latestAttitude = null;
+const alignView = document.getElementById("align-view");
+const resetView = document.getElementById("reset-view");
+const viewReference = document.getElementById("view-reference");
+alignView.addEventListener("click", () => {
+  if (!pose.alignView()) return;
+  resetView.disabled = false;
+  viewReference.textContent = "View aligned with the connector toward you. Tilt stays live; sensor readings are unchanged. Alignment resets on page reload.";
+  queueDraw();
+});
+resetView.addEventListener("click", () => {
+  pose.resetView();
+  resetView.disabled = true;
+  viewReference.textContent = "Default view. Place the sensor flat with its connector toward you, then select Align View. Alignment resets on page reload.";
+  queueDraw();
+});
 const panels = groups.map(group => {
   const article = document.createElement("article");
   article.innerHTML = `<div class="panel-head"><h2>${group.title}</h2><span class="unit">${group.unit}</span></div>
@@ -99,6 +114,7 @@ function receive(data) {
     });
     latestAttitude = data.latest?.attitude || null;
     pose.update(latestAttitude, data.status);
+    alignView.disabled = !latestAttitude || data.status !== "live";
     document.getElementById("pose-status").textContent = !latestAttitude ? "Waiting" :
       (data.status === "live" ? "Live Pose" : "Last Received Pose");
     queueDraw();
@@ -115,6 +131,7 @@ source.onerror = () => {
   status.textContent = "Pi Unreachable"; status.className = "badge disconnected";
   notice.textContent = "Cannot reach the Pi. Retrying automatically; displayed values are historical.";
   pose.update(latestAttitude, "disconnected");
+  alignView.disabled = true;
   document.getElementById("pose-status").textContent = latestAttitude ? "Last Received Pose" : "Waiting";
   queueDraw();
 };

@@ -19,6 +19,11 @@
   <article class="orientation-panel">
     <div class="panel-head"><h2>Sensor Orientation</h2><span class="unit" id="pose-status">Waiting</span></div>
     <canvas id="pose" role="img" aria-label="Waiting for attitude measurements"></canvas>
+    <div class="pose-controls">
+      <button id="align-view" type="button" disabled>Align View</button>
+      <button id="reset-view" type="button" disabled>Reset View</button>
+    </div>
+    <p id="view-reference" class="pose-caption" role="status">Default view. Place the sensor flat with its connector toward you, then select Align View. Alignment resets on page reload.</p>
     <p class="pose-caption">VN-100 rugged housing · connector on −X · colored axes follow the sensor.<br>Illustrative model. Physical axis correspondence still needs a bench check.</p>
     <details class="housing-reference"><summary>Housing Reference</summary>
       <img src="/vn100-reference.png" alt="Provided reference showing the red rugged VN-100 housing, its connector and mounting tabs, alongside the silver SMD version">

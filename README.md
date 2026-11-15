@@ -26,6 +26,10 @@ VNYMR fields follow VectorNav UM001, section “Yaw, Pitch, Roll, Magnetic, Acce
 
 Timestamps are Pi receive times, not sensor sample timestamps. Several packets can arrive in one serial read, so their receive times may match. A continuous server-sent event connection sends batches up to 20 times per second; acquisition processes every received valid VNYMR packet independently. Drawing follows the browser's animation frames. Plot axes expand for new extremes and stay stable for the session; reloading resets their ranges. Plot gaps mark missing sequences or receive-time gaps over one second. Units and values are passed through without conversion or smoothing.
 
+## Align the View
+
+Place the VN-100 flat with its connector toward you and select **Align View**. The camera moves around the vertical axis to face the connector at the current sensor heading. Live pitch, roll, and subsequent yaw remain visible; the NED compass follows the camera viewpoint. This changes only the browser camera, never sensor configuration, measurements, or plots. **Reset View** restores the default camera. Alignment lasts until page reload and is available only with live attitude data.
+
 ## Code Organization
 
 | Module | Responsibility |

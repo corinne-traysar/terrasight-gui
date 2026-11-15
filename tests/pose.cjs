@@ -33,3 +33,23 @@ assert.deepEqual(received, [0, 0, 90]);
 close(transform(displayRotation([90, 0, 0]), [1, 0, 0]), [0, 1, 0]);
 close(transform(displayRotation([0, 90, 0]), [1, 0, 0]), [0, 0, -1]);
 console.log('PASS: zero pose, yaw/pitch/roll signs, wraparound, and mixed rotation');
+
+// Alignment changes the camera heading, so -X faces the viewer at any yaw.
+for (const yaw of [-179, -90, 0, 65, 179, 359]) {
+  const camera = cameraAxes(yaw + 180);
+  const connector = transform(rotation(yaw, 0, 0), [-1, 0, 0]);
+  close([connector.reduce((sum, v, i) => sum + v * camera.right[i], 0)], [0]);
+  assert.ok(connector.reduce((sum, v, i) => sum + v * camera.view[i], 0) > .8);
+  assert.ok(connector.reduce((sum, v, i) => sum + v * camera.up[i], 0) < 0);
+}
+// No alignment from missing or historical data; live alignment never edits input.
+const pose = require('../web/pose.js').create({ setAttribute() {} });
+assert.equal(pose.alignView(), false);
+const sample = [62, 12, -18];
+pose.update(sample, 'stale');
+assert.equal(pose.alignView(), false);
+pose.update(sample, 'live');
+assert.equal(pose.alignView(), true);
+assert.deepEqual(sample, [62, 12, -18]);
+pose.resetView();
+console.log('PASS: connector-facing alignment across yaw wrap and live-data gating');
