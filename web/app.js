@@ -9,7 +9,7 @@ const groups = [
 const colors = ["#73d8c2", "#e8b775", "#97acff"];
 const status = document.getElementById("status");
 const notice = document.getElementById("notice");
-const pose = window.VN100Pose.create(document.getElementById("pose"));
+const pose = window.VN100Pose.createCapsule(document.getElementById("pose"));
 let latestAttitude = null;
 const startRecording = document.getElementById("start-recording");
 const stopRecording = document.getElementById("stop-recording");
@@ -136,11 +136,11 @@ function receive(data) {
     recordingState = data.recording || null;
     piReachable = true; sensorLive = data.status === "live";
     showRecording();
-    status.textContent = ({ live: "Live", stale: "Data Stale", disconnected: "Sensor Disconnected", waiting: "Waiting for Sensor" })[data.status];
+    status.textContent = ({ stopped: "Acquisition Stopped", live: "Live", stale: "Data Stale", disconnected: "Sensor Disconnected", waiting: "Waiting for Sensor" })[data.status];
     status.className = `badge ${data.status}`;
     document.getElementById("counts").textContent = `${data.received.toLocaleString()} / ${data.rejected.toLocaleString()}`;
     document.getElementById("last").textContent = data.latest ? new Date(data.latest.received_ms).toLocaleTimeString() : "Waiting";
-    notice.textContent = data.status === "live" ? "Receiving live measurements · continuous stream · up to 20 display updates per second"
+    notice.textContent = data.status === "stopped" ? "Acquisition is stopped. Start VN-100 from the dashboard Overview when the sensor is connected." : data.status === "live" ? "Receiving live measurements · continuous stream · up to 20 display updates per second"
       : data.status === "stale" ? "No valid measurements for more than one second. Displayed values are historical."
       : data.status === "waiting" ? "Serial port is open; waiting for a valid VNYMR packet."
       : "Sensor connection unavailable. Retrying automatically; displayed values are historical.";
@@ -160,7 +160,8 @@ function receive(data) {
   }
 }
 
-const source = new EventSource("/api/events");
+const sharedVN=window.parent!==window && window.BenchTelemetry;
+const source = sharedVN ? {} : new EventSource("/api/events");
 let lastMessageAt = performance.now();
 source.onmessage = event => { lastMessageAt = performance.now(); receive(JSON.parse(event.data)); };
 source.onerror = () => {
@@ -172,6 +173,9 @@ source.onerror = () => {
   document.getElementById("pose-status").textContent = latestAttitude ? "Last Received Pose" : "Waiting";
   queueDraw();
 };
+if(sharedVN)sharedVN.subscribeVN(data=>{
+  if(data){lastMessageAt=performance.now();receive(data);}else source.onerror();
+});
 function watchConnection() {
   if (performance.now() - lastMessageAt > 1500) source.onerror();
   setTimeout(watchConnection, 250);

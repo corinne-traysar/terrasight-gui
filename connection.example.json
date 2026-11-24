@@ -1,0 +1,4 @@
+{
+  "pi_url": "http://your-pi:8000",
+  "ssh_target": "your-user@your-pi"
+}

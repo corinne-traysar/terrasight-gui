@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Terrasight Bench Test</title><link rel="stylesheet" href="/style.css">
-  <script src="/pose.js" defer></script><script src="/app.js" defer></script>
+  <script src="/pose.js" defer></script><script src="/telemetry.js" defer></script><script src="/app.js" defer></script>
 </head>
 <body>
-  <header><div><div class="eyebrow">TERRASIGHT / BENCH TEST</div><h1>VN-100 Live Measurements</h1>
+  <header><div><div class="eyebrow">TERRASIGHT / BENCH TEST</div><h1>IMU - VN100</h1>
     <p>Acquired and decoded on the Raspberry Pi · displayed on your computer</p></div>
     <div id="status" role="status" class="badge waiting">Connecting</div></header>
   <section class="summary" aria-label="Connection Details">
@@ -27,17 +27,17 @@
     <p id="recording-error" class="recording-error" role="alert"></p>
   </article>
   <article class="orientation-panel">
-    <div class="panel-head"><h2>Sensor Orientation</h2><span class="unit" id="pose-status">Waiting</span></div>
+    <div class="panel-head"><h2>Capsule Orientation</h2><span class="unit" id="pose-status">Waiting</span></div>
     <canvas id="pose" role="img" aria-label="Waiting for attitude measurements"></canvas>
     <div class="pose-controls">
       <button id="align-view" type="button" disabled>Align View</button>
       <button id="reset-view" type="button" disabled>Reset View</button>
     </div>
     <p id="view-reference" class="pose-caption" role="status">Default view. Place the sensor flat with its connector toward you, then select Align View. Alignment resets on page reload.</p>
-    <p class="pose-caption">VN-100 rugged housing · connector on −X · colored axes follow the sensor.<br>Illustrative model. Physical axis correspondence still needs a bench check.</p>
+    <p class="pose-caption">Capsule wireframe · photo-based planned mounting · VN-100 connector toward Pi.<br>Capsule +Z points toward Pi; +X points through the open face. VN-100 +X points toward the sensing end. Physical mounting is not yet fixed.</p>
     <details class="housing-reference"><summary>Housing Reference</summary>
       <img src="/vn100-reference.png" alt="Provided reference showing the red rugged VN-100 housing, its connector and mounting tabs, alongside the silver SMD version">
-      <p class="pose-caption">The red rugged unit is represented by the rotating model.</p>
+      <p class="pose-caption">The VN-100 is highlighted inside the capsule wireframe.</p>
     </details>
   </article>
   <main id="plots"></main>

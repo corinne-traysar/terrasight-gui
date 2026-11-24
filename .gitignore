@@ -6,3 +6,23 @@ captures/
 *.bin
 *.csv
 .env
+
+# Local connection settings and credentials
+connection.local.json
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated bench data, reports, and visual exports
+bench-records/
+bench-data/
+outputs/
+*.log
+*.zip
+
+# Machine-specific SD-card recovery utilities
+inspect_pi_card.py
+restore_pi_network.py
