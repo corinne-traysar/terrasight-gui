@@ -13,6 +13,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import posix_stubs  # noqa: F401  (lets the serial sensor modules import on Windows)
+from api_helpers import page_links
 from dashboard import vn100_control
 from dashboard.bench_app import make_bench_server
 from dashboard.web_assets import ASSETS
@@ -71,6 +72,20 @@ class BenchServerTests(unittest.TestCase):
             self.assertEqual(status, 200, script)
             self.assertTrue(headers['Content-Type'].startswith('text/javascript'))
             self.assertEqual(body, ASSETS.read(script.lstrip('/')))
+
+    def test_every_file_a_page_links_to_is_served(self):
+        for link in page_links():
+            with self.subTest(link=link):
+                self.assertEqual(self.request(link)[0], 200)
+
+    def test_recording_scripts_are_served_as_javascript(self):
+        for script in ('/recording-data.js', '/recording-service.js', '/recording-panel.js'):
+            status, headers, body = self.request(script)
+            self.assertEqual((status, headers['Content-Type']), (200, 'text/javascript; charset=utf-8'))
+            self.assertEqual(body, ASSETS.read(script.lstrip('/')))
+
+    def test_images_are_served_without_a_charset(self):
+        self.assertEqual(self.request('/vn100-reference.png')[1]['Content-Type'], 'image/png')
 
     def test_bench_status_reports_stopped_instruments(self):
         data = json.loads(self.request('/api/bench')[2])

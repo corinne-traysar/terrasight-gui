@@ -3,7 +3,7 @@
 <style>
 body{max-width:1500px;padding:24px}
 .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:20px 0 14px}
-.toolbar .spacer{flex:1}
+.toolbar + .toolbar{margin-top:0}
 .file-button input{display:none}
 .cal-line{font:12px var(--mono);color:var(--muted);margin:0 0 12px;overflow-wrap:anywhere}
 .cal-line.applied{color:var(--text)}
@@ -27,9 +27,13 @@ input[type=range]{width:100%;accent-color:var(--olive)}
 <header><div><div class="eyebrow">Terrasight · Offline Analysis</div><h1>Offline Data</h1><p>See magnetic and electromagnetic data from a file: |B| over the sample index, then B along each axis (and phase for electromagnetic data) in an axis frame you can rotate.</p></div><span id="badge" class="badge waiting" role="status">No Data</span></header>
 <div class="toolbar">
   <label class="button file-button">Open Magnetic…<input type="file" id="magnetic-file" accept=".json,.csv,.tsv,.txt,.dat"></label>
+  <button id="save-magnetic" type="button" disabled>Save Magnetic Scan</button>
   <label class="button file-button">Open Electromagnetic…<input type="file" id="electromagnetic-file" accept=".json,.csv,.tsv,.txt,.dat"></label>
-  <span class="spacer"></span>
+  <button id="save-electromagnetic" type="button" disabled>Save Electromagnetic Scan</button>
+</div>
+<div class="toolbar">
   <label class="button file-button">Open Calibration…<input type="file" id="calibration-file" accept=".json"></label>
+  <button id="save-calibration" type="button" disabled>Save Open Calibration JSON</button>
   <button id="apply-calibration" disabled title="Calibrate the magnetic data with the open calibration and open the angle window">Apply Calibration</button>
   <button id="show-angles" disabled title="Open the window with the calibration and scan angles">Show Angles</button>
   <button id="remove-calibration" disabled title="Show the magnetic data as read from its file">Remove Calibration</button>

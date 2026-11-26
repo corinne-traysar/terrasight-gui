@@ -29,7 +29,7 @@ class OfflineCalibrateTest(unittest.TestCase):
     def test_route_needs_the_calibration_package(self):
         self.assertTrue(web_api.handles('POST', '/api/offline/calibrate'))
         self.assertFalse(web_api.handles('GET', '/api/offline/calibrate'))
-        self.assertIn('/api/offline/calibrate', web_api.NEEDS_CALIBRATION)
+        self.assertIn('/api/offline/calibrate', web_api.NEEDS_ONYX)
 
     @unittest.skipIf(FIT_AVAILABLE, 'onyx calibration is installed here')
     def test_without_onyx_is_503(self):
@@ -59,11 +59,11 @@ class OfflineCalibrateTest(unittest.TestCase):
 
     @unittest.skipUnless(FIT_AVAILABLE, 'needs numpy and the onyx calibration package')
     def test_reply_carries_the_calibration_angles(self):
-        from offline_analysis.magnetic_calibration.rotation_math import euler_zyx_deg
+        from offline_analysis.magnetic_calibration.calibration_angles import euler_zyx_deg
         from calibration_model import model
         _, _, misalignment, ned_to_enu = model()
         angles = self.calibrate('cal.csv', self.text, self.calibration).body['calibration']
-        expected = euler_zyx_deg((ned_to_enu @ misalignment.T).tolist())
+        expected = euler_zyx_deg(ned_to_enu @ misalignment.T)
         for key in ('yaw', 'pitch', 'roll'):
             self.assertAlmostEqual(abs(angles['mounting_deg'][key]), abs(expected[key]), delta=0.01, msg=key)
         self.assertEqual((angles['method'], angles['reflected']), ('imu', False))

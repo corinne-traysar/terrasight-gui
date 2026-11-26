@@ -16,33 +16,49 @@ const popup = () => ({ closed: false, focused: 0, messages: [], focus() { this.f
 
 /** Offline Data with offline-calibration.js; `status` answers /api/calibration/status, `answers` the other URLs. */
 async function view(status, answers) {
-  const opened = [], windows = [];
+  const opened = [], windows = [], blobs = [];
   const fetch = (url, options) => { if (url === '/api/calibration/status') return status(); opened.push([url, JSON.parse(options.body)]); return answers[url](); };
-  const page = offlinePage(fetch, { location: { origin: ORIGIN }, open: (...args) => { opened.push(['open', ...args]); return windows.shift() ?? null; } });
+  const page = offlinePage(fetch, {
+    location: { origin: ORIGIN }, open: (...args) => { opened.push(['open', ...args]); return windows.shift() ?? null; },
+    Blob, URL: { createObjectURL(blob) { blobs.push(blob); return 'blob:download'; }, revokeObjectURL() {} },
+  });
   page.load('offline-calibration.js'); await flush();
   const choose = async (id, chosen) => { page.node(id).onchange({ target: { files: [chosen], value: 'x' } }); await flush(); };
-  return { ...page, opened, windows, choose, text: id => page.node(id).textContent };
+  const downloaded = () => [page.context.document.body.children.at(-1).download, blobs.at(-1)];
+  return { ...page, opened, windows, choose, blobs, downloaded, text: id => page.node(id).textContent };
 }
 
 (async () => {
   let release, loaded = LOADED;
+  let exportAnswer = () => reply({ csv: 'time,B_east_nT,B_north_nT,B_up_nT,B_total_nT\n0,1,2,2,3\n' });
   const answers = { '/api/offline/load': () => reply(loaded),
-    '/api/offline/calibrate': () => new Promise(resolve => { release = (data, code = 200) => resolve({ ok: code < 400, status: code, json: async () => data }); }) };
-  const { node, run, context, opened, windows, choose, text } = await view(() => reply({ available: true, reason: null }), answers);
+    '/api/offline/calibrate': () => new Promise(resolve => { release = (data, code = 200) => resolve({ ok: code < 400, status: code, json: async () => data }); }),
+    '/api/calibration/apply': () => exportAnswer() };
+  const { node, run, context, opened, windows, choose, blobs, downloaded, text } = await view(() => reply({ available: true, reason: null }), answers);
   const apply = node('apply-calibration');
+  const saveMag = node('save-magnetic'), saveEm = node('save-electromagnetic'), saveCal = node('save-calibration');
   assert.equal(text('calibration-line'), 'Calibration: none. Open an onyx calibration JSON (from the Calibration tab) to calibrate the magnetic data.');
   assert.deepEqual([apply.disabled, apply.title, node('show-angles').disabled, node('remove-calibration').disabled], [true, 'Open a calibration JSON first.', true, true]);
+  assert.deepEqual([saveMag.disabled, saveEm.disabled, saveCal.disabled], [true, true, true]);
 
   await choose('calibration-file', file('bad.json', '{'));
   assert.equal(text('error'), 'bad.json is not valid JSON.');
   await choose('calibration-file', file('other.json', '{"format":"x"}'));
   assert.equal(text('error'), 'other.json is not an onyx-vector-calibration/1 calibration file.');
-  await choose('calibration-file', file('cal.json', CAL));
+  const calibrationFile = file('cal.json', CAL);
+  await choose('calibration-file', calibrationFile);
   assert.equal(text('error'), '');
   assert.equal(text('calibration-line'), 'Calibration: cal.json (imu, fitted on 600 rows) is open. Select Apply Calibration.');
   assert.deepEqual([apply.disabled, apply.title], [true, 'Open a magnetic file first.']);
-  await choose('magnetic-file', file('scan.csv', 'raw text'));
+  assert.equal(saveCal.disabled, false);
+  saveCal.onclick();
+  assert.deepEqual(downloaded(), ['cal.json', calibrationFile]);
+  const magneticFile = file('scan.csv', 'raw text');
+  await choose('magnetic-file', magneticFile);
   assert.deepEqual([apply.disabled, apply.title], [false, 'Calibrate the magnetic data with the open calibration and open the angle window']);
+  assert.deepEqual([saveMag.disabled, saveEm.disabled], [false, true]);
+  await saveMag.onclick();
+  assert.deepEqual(downloaded(), ['scan.csv', magneticFile]);
 
   // Apply: the window opens in the click with a pending payload, before the server answers.
   const angleWindow = popup(); windows.push(angleWindow);
@@ -63,6 +79,27 @@ async function view(status, answers) {
     scans: [{ sensor: 'magnetic', label: 'Magnetic', source: 'scan.csv', count: 2, attitude: { columns: ['yaw', 'pitch', 'roll'] } }] } },
   'the payload names the raw scan, not the calibrated copy');
 
+  // Saving uses the calibration behind the current plot, even if another JSON was opened since applying it.
+  const otherCalibration = file('next.json', JSON.stringify({ format: 'onyx-vector-calibration/1', method: 'ellipsoid' }));
+  await choose('calibration-file', otherCalibration);
+  saveCal.onclick();
+  assert.deepEqual(downloaded(), ['next.json', otherCalibration]);
+  assert.equal(text('save-magnetic'), 'Save Calibrated Scan CSV');
+  const saving = saveMag.onclick();
+  assert.equal(saveMag.disabled, true);
+  assert.equal(text('save-magnetic'), 'Preparing Scan CSV…');
+  assert.deepEqual(opened.at(-1), ['/api/calibration/apply', { name: 'scan.csv', text: 'raw text', calibration: CAL }]);
+  await saving;
+  const [csvName, csv] = downloaded();
+  assert.equal(csvName, 'scan-calibrated.csv');
+  assert.equal(csv.type, 'text/csv;charset=utf-8');
+  assert.equal(await csv.text(), 'time,B_east_nT,B_north_nT,B_up_nT,B_total_nT\n0,1,2,2,3\n');
+  const downloadCount = blobs.length;
+  exportAnswer = () => reply({ error: 'server unavailable' }, 503);
+  await saveMag.onclick();
+  assert.deepEqual([saveMag.disabled, blobs.length, text('error')], [false, downloadCount, 'Cannot save scan-calibrated.csv: server unavailable']);
+  await choose('calibration-file', calibrationFile);
+
   // Applying again calibrates the raw data, not the calibrated copy; the open window is reused.
   const again = apply.onclick(); release({ ...APPLIED, summary: { attitude_used: true } }); await again;
   assert.equal(angleWindow.focused, 1);
@@ -78,6 +115,9 @@ async function view(status, answers) {
   assert.equal(text('status'), 'Magnetic: scan.csv, 2 samples', 'the raw data is shown again');
   assert.equal(context.terrasightAngles.calibration, null);
   assert.deepEqual([node('show-angles').disabled, node('remove-calibration').disabled], [true, true]);
+  assert.equal(text('save-magnetic'), 'Save Magnetic Scan');
+  await saveMag.onclick();
+  assert.deepEqual(downloaded(), ['scan.csv', magneticFile]);
   node('remove-calibration').onclick();
   assert.equal(text('status'), 'Magnetic: scan.csv, 2 samples', 'removing twice changes nothing');
 
@@ -106,6 +146,21 @@ async function view(status, answers) {
   const last = apply.onclick(); release(APPLIED); await last;
   assert.equal(opens(), before + 1, 'a window that cannot be reached is forgotten and opened anew');
   assert.equal(reopened.messages.at(-1)[0].data.appliedTo, 'next.csv');
+  const applyingOld = apply.onclick();
+  loaded = { ...LOADED, source: 'new.tsv' };
+  const newMagnetic = file('new.tsv', 'new');
+  await choose('magnetic-file', newMagnetic);
+  release(APPLIED); await applyingOld;
+  await saveMag.onclick();
+  assert.deepEqual(downloaded(), ['new.tsv', newMagnetic], 'an older apply cannot replace the new scan');
+
+  loaded = { source: 'em.json', count: 1, labels: ['x', 'y', 'z'], real_nt: [[1, 2, 3]], imag_nt: [[0, 0, 0]] };
+  const electromagnetic = file('em.json', '{"phasor":[1,2,3]}');
+  await choose('electromagnetic-file', electromagnetic);
+  assert.equal(saveEm.disabled, false);
+  saveEm.onclick();
+  assert.deepEqual(downloaded(), ['em.json', electromagnetic]);
+  console.log('PASS: saving original scans, opened calibration JSON, and calibrated CSV');
   console.log('PASS: open, apply, re-apply, show, remove, failures and pop-up blocking');
 
   // Without calibration support the button explains why.

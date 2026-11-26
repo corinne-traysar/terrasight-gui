@@ -1,37 +1,26 @@
-"""Tests of scans/channels.py: column-name normalizing and the sensor channel picks.
+"""Tests of scans/channel_profiles.py: the sensor channel picks of the Calibration view.
 
-Ported from Simulation-Examples (calibration_crop tests).
+Ported from Simulation-Examples (calibration_crop tests). Name normalizing and
+the sample axis are onyx's (``scans.columns.channels``) and tested there.
 """
 import unittest
 
-from offline_analysis.scans.channels import (PROFILES, ChannelSet, ElectromagneticProfile, MagneticProfile,
-                                             find_axis, is_imu, normalize)
-from analysis_helpers import VN100_HEADER
+from calibration_model import MISSING
+
+if MISSING:
+    raise unittest.SkipTest(MISSING)
+
+from analysis_helpers import VN100_HEADER  # noqa: E402
+from offline_analysis.scans.channel_profiles import (PROFILES, ChannelSet, ElectromagneticProfile,  # noqa: E402
+                                                     MagneticProfile, is_imu)
 
 
 class NameTest(unittest.TestCase):
-    """normalize, find_axis and is_imu."""
-
-    def test_normalize_drops_unit_and_case(self):
-        self.assertEqual(normalize('Bx [nT]'), 'bx')
-        self.assertEqual(normalize(' Time (s) '), 'time')
-
-    def test_find_axis_prefers_time_over_distance(self):
-        self.assertEqual(find_axis(['distance_m', 'Bx', 'Time (s)']), 'Time (s)')
-
-    def test_find_axis_falls_back_to_distance_then_index(self):
-        self.assertEqual(find_axis(['source_index', 'distance_m']), 'distance_m')
-        self.assertEqual(find_axis(['Bx', 'sample']), 'sample')
-
-    def test_find_axis_takes_vn100_receipt_time(self):
-        self.assertEqual(find_axis(VN100_HEADER), 'received_utc')
-
-    def test_find_axis_none_without_candidate(self):
-        self.assertIsNone(find_axis(['Bx', 'By']))
+    """is_imu."""
 
     def test_is_imu_accepts_imu_names(self):
         for name in ('acc_x', 'accelX', 'gyro_z [deg/s]', 'roll', 'yaw_rate', 'qw', 'imu_mag_x', 'ax',
-                     'yaw_deg', 'acceleration_x_m_s2', 'angular_rate_z_rad_s'):
+                     'yaw_deg', 'acceleration_x_m_s2', 'angular_rate_z_rad_s', 'imu_yaw_rad', 'imu_roll_rad'):
             with self.subTest(name=name):
                 self.assertTrue(is_imu(name))
 

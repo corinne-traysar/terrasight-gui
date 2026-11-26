@@ -87,10 +87,10 @@ class RouteTests(unittest.TestCase):
 
 class PageTests(unittest.TestCase):
     def test_every_page_file_exists_in_the_web_folder(self):
-        for route, (name, mime) in PAGES.items():
+        for route, name in PAGES.items():
             with self.subTest(route=route):
                 self.assertIsNotNone(ASSETS.find(name), name)
-                self.assertIn(mime, ('text/html', 'text/javascript'))
+                self.assertEqual(ASSETS.mime_type(name), 'text/html')
 
     def test_web_folder_is_the_repository_web_folder(self):
         self.assertEqual(WEB.name, 'web')

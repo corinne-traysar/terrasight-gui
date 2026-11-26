@@ -1,80 +1,69 @@
-"""Fit and apply onyx magnetic calibrations to magnetic recordings.
+"""Fit onyx magnetic calibrations to onyx ``MagneticScan`` objects with the dashboard's options.
 
-Needs numpy and the onyx ``calibration`` package. Methods: ``ellipsoid``
-(field only: offset, scale and soft iron; components keep the sensor's
-misalignment) and ``imu`` (field plus yaw/pitch/roll: also misalignment to the
-IMU and the Earth field). ``auto`` picks ``imu`` when the recording has
-attitude, else ``ellipsoid``. The fit is scaled to a reference |B|, by default
-the WMM2025 Bar-Gyora total field. Mounting ``enu`` means sensor X/Y/Z =
-east/north/up on a level, north-facing body (the synthetic-data convention);
-``body`` means the sensor axes already are forward/right/down (as on the
-VN-100). Mounting only matters for the ellipsoid method; the IMU method fits it.
+Methods: ``ellipsoid`` (field only: offset, scale and soft iron; components
+keep the sensor's misalignment) and ``imu`` (field plus yaw/pitch/roll: also
+misalignment to the IMU and the Earth field). ``auto`` picks ``imu`` when the
+scan has yaw/pitch/roll (its own or derived from a raw IMU), else
+``ellipsoid``. The fit is scaled to a reference |B|, by default the WMM2025
+Bar-Gyora total field. Mounting ``enu`` means sensor X/Y/Z = east/north/up on
+a level, north-facing body (the synthetic-data convention); ``body`` means
+the sensor axes already are forward/right/down (as on the VN-100). Mounting
+only matters for the ellipsoid method; the IMU method fits it.
 """
 from __future__ import annotations
 
 import numpy as np
-from calibration import (SENSOR_ENU_TO_BODY, EllipsoidCalibration, ImuCalibration,
-                         VectorCalibration, VectorCalibrationParameters)
-from calibration.arrays import FloatArray
+from calibration import SENSOR_ENU_TO_BODY, EllipsoidCalibration, ImuCalibration, VectorCalibration
+from scans import MagneticScan
 
-from offline_analysis.magnetic_calibration.magnetic_recording import NT_TO_T, MagneticRecording
 from offline_analysis.magnetic_calibration.reference import DEFAULT_REFERENCE_NT, METHODS
 
+NANOTESLA = 1e-9
 MOUNTINGS = {'enu': SENSOR_ENU_TO_BODY, 'body': np.eye(3)}
 
 
-def choose_method(recording: MagneticRecording, method: str = 'auto') -> str:
-    """Resolve ``method`` for ``recording``: 'imu' or 'ellipsoid'.
+class MagneticCalibrator:
+    """A fitting method, reference |B| (nT) and mounting, applied to magnetic scans."""
 
-    Raises:
-        ValueError: on an unknown method, or 'imu' without attitude columns.
-    """
-    if method not in METHODS:
-        raise ValueError(f'unknown method {method!r}; choose one of {", ".join(METHODS)}')
-    if method == 'auto':
-        return 'imu' if recording.has_attitude else 'ellipsoid'
-    if method == 'imu' and not recording.has_attitude:
-        raise ValueError('the imu method needs yaw, pitch and roll columns in the scan')
-    return method
+    def __init__(self, method: str = 'auto', reference_nt: float = DEFAULT_REFERENCE_NT, mounting: str = 'enu'):
+        """Check and store the options.
 
+        Raises:
+            ValueError: on an unknown method or mounting, or a non-positive reference.
+        """
+        if method not in METHODS:
+            raise ValueError(f'unknown method {method!r}; choose one of {", ".join(METHODS)}')
+        if mounting not in MOUNTINGS:
+            raise ValueError(f'unknown mounting {mounting!r}; choose enu or body')
+        if not reference_nt > 0:
+            raise ValueError('reference_nt must be a positive number of nT')
+        self.method, self.reference_nt, self.mounting = method, reference_nt, mounting
 
-def build_calibration(method: str, reference_nt: float = DEFAULT_REFERENCE_NT,
-                      mounting: str = 'enu') -> VectorCalibration:
-    """An unfitted onyx calibration for 'ellipsoid' or 'imu' scaled to ``reference_nt``.
+    def method_for(self, scan: MagneticScan) -> str:
+        """'imu' or 'ellipsoid' for ``scan``; ValueError for 'imu' without yaw/pitch/roll."""
+        has_attitude = scan.attitude_columns is not None
+        if self.method == 'auto':
+            return 'imu' if has_attitude else 'ellipsoid'
+        if self.method == 'imu' and not has_attitude:
+            raise ValueError('the imu method needs yaw, pitch and roll columns (or a raw IMU) in the scan')
+        return self.method
 
-    Raises:
-        ValueError: on an unknown method or mounting, or a non-positive reference.
-    """
-    if mounting not in MOUNTINGS:
-        raise ValueError(f'unknown mounting {mounting!r}; choose enu or body')
-    if method == 'ellipsoid':
-        return EllipsoidCalibration(reference_nt * NT_TO_T, MOUNTINGS[mounting])
-    if method == 'imu':
-        return ImuCalibration(reference_nt * NT_TO_T)
-    raise ValueError(f'unknown method {method!r}; choose ellipsoid or imu')
+    def build(self, method: str) -> VectorCalibration:
+        """An unfitted onyx calibration for 'ellipsoid' or 'imu'."""
+        reference_t = self.reference_nt * NANOTESLA
+        if method == 'ellipsoid':
+            return EllipsoidCalibration(reference_t, MOUNTINGS[self.mounting])
+        if method == 'imu':
+            return ImuCalibration(reference_t)
+        raise ValueError(f'unknown method {method!r}; choose ellipsoid or imu')
 
+    def fit(self, scan: MagneticScan) -> VectorCalibration:
+        """A calibration fitted to ``scan`` with onyx ``MagneticScan.fit_calibration``.
 
-def fit_recording(recording: MagneticRecording, method: str = 'auto',
-                  reference_nt: float = DEFAULT_REFERENCE_NT,
-                  mounting: str = 'enu') -> VectorCalibrationParameters:
-    """Fit a calibration to ``recording`` and return its parameters.
-
-    Raises:
-        ValueError: on bad options, too few rows, or readings that do not
-            cover enough orientations for the chosen method.
-    """
-    calibration = build_calibration(choose_method(recording, method), reference_nt, mounting)
-    return calibration.fit(recording.samples())
-
-
-def calibrated_enu_nt(parameters: VectorCalibrationParameters,
-                      recording: MagneticRecording) -> FloatArray:
-    """(N, 3) calibrated B east/north/up in nT for every row of ``recording``.
-
-    Uses the recording's attitude when present; without it the sensor is taken
-    as level and facing north (onyx ``calibrated_enu``).
-    """
-    calibration = EllipsoidCalibration(parameters.reference_magnitude_t)
-    calibration.restore(parameters)
-    enu = calibration.calibrated_enu(recording.field_t, recording.attitude_rad)
-    return np.column_stack(enu) / NT_TO_T
+        Raises:
+            ValueError: on too few rows, or readings that do not cover enough
+                orientations for the chosen method.
+        """
+        calibration = self.build(self.method_for(scan))
+        scan.fit_calibration(calibration)
+        return calibration

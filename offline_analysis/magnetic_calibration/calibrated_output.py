@@ -1,107 +1,96 @@
-"""Calibration documents, calibrated scans and short JSON summaries of fits, in nT.
+"""A magnetic scan calibrated by onyx, as the dashboard's east/north/up nT output and summaries.
 
-Needs numpy and the onyx ``calibration`` package. A calibration document is the
-onyx ``onyx-vector-calibration/1`` JSON that ``calibration.save_parameters``
-writes. A calibrated scan holds the sample axis of the kept rows plus
-``B_east_nT``, ``B_north_nT``, ``B_up_nT`` and ``B_total_nT``; the Calibration
-and Offline Data views read it back as a magnetic east/north/up scan, and
+onyx ``Scan.calibrate`` corrects every complete row as ``C (B_raw - b)`` and
+rotates it to east/north/up with the scan's yaw/pitch/roll (its own or
+derived from a raw IMU), or as a level, north-facing sensor without them.
+Rows with a missing value are dropped here. The calibrated scan holds the
+sample axis plus ``B_east_nT``, ``B_north_nT``, ``B_up_nT`` and ``B_total_nT``;
 ``offline_calibration`` gives the Offline Data view the same rows as vectors.
 """
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import numpy as np
-from calibration import VectorCalibrationParameters
-from calibration.vector.parameter_storage import FORMAT
+from calibration import VectorCalibration
+from scans import MagneticScan, ScanData
 
-from offline_analysis.magnetic_calibration.calibration_angles import ATTITUDE_KEY, calibration_angles, recording_attitude
-from offline_analysis.magnetic_calibration.magnetic_calibrator import calibrated_enu_nt
-from offline_analysis.magnetic_calibration.magnetic_recording import NT_TO_T, MagneticRecording, read_recording
-from offline_analysis.scans.scan import Scan
+from offline_analysis.magnetic_calibration.calibration_angles import calibration_angles
+from offline_analysis.magnetic_calibration.calibration_document import CalibrationDocument
+from offline_analysis.scans.scan_window import csv_text
 
+NANOTESLA = 1e-9
 ENU_COLUMNS = ('B_east_nT', 'B_north_nT', 'B_up_nT')
 TOTAL_COLUMN = 'B_total_nT'
 
 
-def calibration_json(parameters: VectorCalibrationParameters,
-                     recording: MagneticRecording | None = None) -> str:
-    """``parameters`` as the text ``calibration.save_parameters`` would write.
+class CalibratedOutput:
+    """The rows of ``scan`` that onyx could calibrate, in nT east/north/up."""
 
-    With a ``recording`` that has attitude, the document also carries the
-    yaw/pitch/roll (degrees) of every fitted row under ``calibration_attitude``
-    for the Offline Data angle window; onyx ignores the extra key.
-    """
-    document = {'format': FORMAT, **parameters.to_dict()}
-    if recording is not None and recording.attitude_rad is not None and recording.attitude_columns:
-        document[ATTITUDE_KEY] = recording_attitude(recording.axis, recording.axis_values.tolist(),
-                                                    recording.attitude_rad.tolist(), recording.attitude_columns)
-    return json.dumps(document, indent=2) + '\n'
+    def __init__(self, scan: MagneticScan, calibration: VectorCalibration):
+        """Calibrate ``scan``; ValueError when no row has every field (and angle) value."""
+        calibrated = scan.calibrate(calibration)
+        field = calibrated.field_t
+        self.kept = np.isfinite(field).all(axis=1)
+        self.source = scan
+        self.attitude_used = bool(calibrated.metadata['calibration']['attitude_used'])
+        self.enu_nt = field[self.kept] / NANOTESLA
+        self.total_nt = np.linalg.norm(self.enu_nt, axis=1)
 
+    @property
+    def rows(self) -> int:
+        """Number of calibrated rows."""
+        return int(self.enu_nt.shape[0])
 
-def parse_calibration(text: str) -> VectorCalibrationParameters:
-    """Parameters from calibration JSON text (as ``calibration.load_parameters`` reads).
+    def data(self) -> ScanData:
+        """The sample axis of the kept rows plus the ENU and total columns."""
+        columns = {self.source.axis: self.source.axis_values[self.kept]}
+        columns.update({name: self.enu_nt[:, k] for k, name in enumerate(ENU_COLUMNS)})
+        columns[TOTAL_COLUMN] = self.total_nt
+        return ScanData(columns, self.source.axis)
 
-    Raises:
-        ValueError: on invalid JSON, a wrong format tag or missing fields.
-    """
-    document = json.loads(text)
-    if not isinstance(document, dict) or document.get('format') != FORMAT:
-        raise ValueError(f'the calibration file is not a {FORMAT} calibration')
-    try:
-        return VectorCalibrationParameters.from_dict(document)
-    except (KeyError, TypeError) as error:
-        raise ValueError(f'the calibration file is incomplete: {error}') from error
+    def csv(self) -> str:
+        """The calibrated scan as CSV text."""
+        return csv_text(self.data())
 
-
-def calibrated_scan(parameters: VectorCalibrationParameters, recording: MagneticRecording) -> Scan:
-    """The recording's rows calibrated with ``parameters``, as east/north/up nT columns."""
-    enu = calibrated_enu_nt(parameters, recording)
-    columns = {recording.axis: tuple(recording.axis_values.tolist())}
-    columns.update({name: tuple(enu[:, k].tolist()) for k, name in enumerate(ENU_COLUMNS)})
-    columns[TOTAL_COLUMN] = tuple(np.linalg.norm(enu, axis=1).tolist())
-    return Scan(recording.axis, columns)
+    def summary(self) -> dict[str, Any]:
+        """Rows, whether attitude was used, and the mean and spread of calibrated |B| (nT)."""
+        return dict(rows=self.rows, attitude_used=self.attitude_used,
+                    b_total_mean_nt=float(self.total_nt.mean()), b_total_std_nt=float(self.total_nt.std()))
 
 
-def fit_summary(parameters: VectorCalibrationParameters,
-                recording: MagneticRecording) -> dict[str, object]:
+def fit_summary(calibration: VectorCalibration, scan: MagneticScan) -> dict[str, Any]:
     """Method, rows, columns used, offset, residual and Earth field (nT) of a fit."""
+    parameters = calibration.parameters
     earth = parameters.earth_field_enu_t
-    return dict(method=parameters.method, rows=recording.count,
-                b_columns=list(recording.field_columns),
-                attitude_columns=list(recording.attitude_columns or []),
-                reference_nt=parameters.reference_magnitude_t / NT_TO_T,
-                offset_nt=_nt(parameters.offset_t),
-                residual_rms_nt=parameters.residual_rms_t / NT_TO_T,
+    return dict(method=parameters.method, rows=parameters.sample_count, b_columns=list(scan.sensor_columns),
+                attitude_columns=list(scan.attitude_columns or []),
+                reference_nt=parameters.reference_magnitude_t / NANOTESLA,
+                offset_nt=_nt(parameters.offset_t), residual_rms_nt=parameters.residual_rms_t / NANOTESLA,
                 earth_field_enu_nt=None if earth is None else _nt(earth))
 
 
-def apply_summary(scan: Scan, recording: MagneticRecording) -> dict[str, object]:
-    """Rows, whether attitude was used, and the mean and spread of calibrated |B| (nT)."""
-    total = np.asarray(scan.columns[TOTAL_COLUMN])
-    return dict(rows=scan.rows, attitude_used=recording.has_attitude,
-                b_total_mean_nt=float(total.mean()), b_total_std_nt=float(total.std()))
-
-
-def offline_calibration(text: str, scan: Scan) -> dict[str, object]:
+def offline_calibration(text: str, scan: MagneticScan) -> dict[str, Any]:
     """Calibrate ``scan`` with the calibration JSON ``text`` for the Offline Data view.
 
     Returns the kept rows' calibrated east/north/up vectors (nT), the apply
-    summary, the B columns read and the calibration's angles.
+    summary, the field columns read and the calibration's angles.
 
     Raises:
-        ValueError: on a bad calibration or a scan without a complete B row.
+        ValueError: on a bad calibration or a scan without a complete row.
     """
-    parameters = parse_calibration(text)
-    angles = calibration_angles(json.loads(text))
-    recording = read_recording(scan)
-    calibrated = calibrated_scan(parameters, recording)
-    field = [[calibrated.columns[name][i] for name in ENU_COLUMNS] for i in range(calibrated.rows)]
-    return dict(count=calibrated.rows, labels=['E', 'N', 'U'], field_nt=field,
-                b_columns=list(recording.field_columns),
-                summary=apply_summary(calibrated, recording), calibration=angles)
+    output = CalibratedOutput(scan, CalibrationDocument.parse(text))
+    return dict(count=output.rows, labels=['E', 'N', 'U'], field_nt=output.enu_nt.tolist(),
+                b_columns=list(scan.sensor_columns), summary=output.summary(),
+                calibration=calibration_angles(_document(text)))
 
 
-def _nt(vector_t: np.ndarray) -> list[float]:
+def _nt(vector_t: Any) -> list[float]:
     """A tesla vector as a list of nT values."""
-    return [float(v) / NT_TO_T for v in vector_t]
+    return [float(v) / NANOTESLA for v in vector_t]
+
+
+def _document(text: str) -> dict[str, Any]:
+    """The parsed calibration JSON object (already validated by ``CalibrationDocument.parse``)."""
+    return json.loads(text)

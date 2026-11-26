@@ -9,10 +9,10 @@
    blockers allow it; it reads window.terrasightAngles from its opener on load
    and takes later updates by postMessage. */
 (function(){
-const {postJSON}=window.ScanPlot;
+const {postJSON,download,stem}=window.ScanPlot;
 const ANGLE_PAGE='/angles',WINDOW_NAME='terrasight-angles',WINDOW_FEATURES='popup,width=1200,height=900';
 const FORMAT='onyx-vector-calibration/1';
-const cal={name:'',text:'',method:'',rows:null,available:false,reason:'Checking calibration support…',raw:null,result:null,popup:null,busy:false};
+const cal={file:null,text:'',method:'',rows:null,available:false,reason:'Checking calibration support…',raw:null,result:null,popup:null,busy:false,saving:false};
 
 async function openCalibration(file){
   if(!file)return;
@@ -20,7 +20,7 @@ async function openCalibration(file){
   try{
     const text=await file.text(),doc=JSON.parse(text);
     if(doc?.format!==FORMAT)throw new Error(`${file.name} is not an ${FORMAT} calibration file.`);
-    Object.assign(cal,{name:file.name,text,method:String(doc.method||'unknown'),rows:doc.sample_count});
+    Object.assign(cal,{file,text,method:String(doc.method||'unknown'),rows:doc.sample_count});
   }catch(error){$('error').textContent=error instanceof SyntaxError?`${file.name} is not valid JSON.`:error.message;}
   update();
 }
@@ -29,18 +29,20 @@ async function openCalibration(file){
 async function applyCalibration(){
   const raw=cal.raw||series.magnetic;
   if(!raw||!cal.text||cal.busy)return;
-  const calibrationName=cal.name;
+  const calibrationName=cal.file.name,calibration=cal.text;
   window.terrasightAngles={...payload(),pending:`Applying ${calibrationName} to ${raw.source}…`};
   const popup=openWindow();
   cal.busy=true;update();$('error').textContent='';$('status').textContent=`Calibrating ${raw.source} with ${calibrationName}…`;
   try{
-    const data=await postJSON('/api/offline/calibrate',{...raw.file,calibration:cal.text});
-    cal.raw=raw;cal.result={data,calibrationName};
+    const data=await postJSON('/api/offline/calibrate',{...raw.file,calibration});
+    if((cal.raw||series.magnetic)!==raw)return;
+    cal.raw=raw;cal.result={data,calibrationName,calibration};
     series.magnetic={...raw,label:'Magnetic (calibrated)',source:`${raw.source} calibrated with ${calibrationName}`,
       count:data.count,labels:data.labels,field:vectors(data.field_nt)};
     showMain();showStatus();publish();
     if(!popup)$('error').textContent='The browser blocked the angle window. Select Show Angles to open it.';
   }catch(error){
+    if((cal.raw||series.magnetic)!==raw)return;
     $('error').textContent=`Cannot apply ${calibrationName}: ${error.message}`;showStatus();
     publish({error:`Cannot apply ${calibrationName} to ${raw.source}: ${error.message}`});
   }finally{cal.busy=false;update();}
@@ -50,6 +52,26 @@ function removeCalibration(){
   if(!cal.raw)return;
   series.magnetic=cal.raw;cal.raw=null;cal.result=null;
   showMain();showStatus();update();publish();
+}
+
+function saveOriginal(file){
+  $('error').textContent='';
+  try{download(file.name,file);}
+  catch(error){$('error').textContent=`Cannot save ${file.name}: ${error.message}`;}
+}
+
+/* Use the same CSV exporter as the Calibration tab and the calibration used for the plotted scan. */
+async function saveMagnetic(){
+  if(!series.magnetic||cal.busy||cal.saving)return;
+  if(!cal.result){saveOriginal(series.magnetic.originalFile);return;}
+  const {file}=cal.raw,{calibration}=cal.result,name=`${stem(file.name)}-calibrated.csv`;
+  cal.saving=true;update();$('error').textContent='';
+  try{
+    const data=await postJSON('/api/calibration/apply',{...file,calibration});
+    download(name,data.csv);
+  }catch(error){
+    $('error').textContent=`Cannot save ${name}: ${error.message}`;
+  }finally{cal.saving=false;update();}
 }
 
 /* Focus the open angle window, or open it; null when the browser blocks it. */
@@ -92,17 +114,27 @@ function dataLoaded(event){
 
 function update(){
   const magnetic=!!(cal.raw||series.magnetic);
+  const saveMagneticButton=$('save-magnetic');
+  saveMagneticButton.disabled=cal.busy||cal.saving||!magnetic;
+  saveMagneticButton.textContent=cal.saving?'Preparing Scan CSV…':cal.result?'Save Calibrated Scan CSV':'Save Magnetic Scan';
+  $('save-electromagnetic').disabled=!series.electromagnetic;
+  const saveCalibrationButton=$('save-calibration');
+  saveCalibrationButton.disabled=!cal.file;
+  saveCalibrationButton.title=cal.file?`Save ${cal.file.name}`:'Open a calibration JSON first.';
   $('apply-calibration').disabled=cal.busy||!cal.available||!cal.text||!magnetic;
   $('apply-calibration').title=!cal.available?cal.reason:!cal.text?'Open a calibration JSON first.':!magnetic?'Open a magnetic file first.':'Calibrate the magnetic data with the open calibration and open the angle window';
   $('show-angles').disabled=!cal.result;
   $('remove-calibration').disabled=cal.busy||!cal.raw;
   const line=$('calibration-line');line.classList.toggle('applied',!!cal.result);
   line.textContent=cal.result?`Calibration: ${cal.result.calibrationName} applied to ${cal.raw.source} (${cal.result.data.summary.attitude_used?'with the scan\'s yaw/pitch/roll':'level, facing north'}; ${cal.result.data.count.toLocaleString()} rows).`
-    :cal.text?`Calibration: ${cal.name} (${cal.method}${cal.rows?`, fitted on ${cal.rows} rows`:''}) is open. ${cal.available?'Select Apply Calibration.':cal.reason}`
+    :cal.file?`Calibration: ${cal.file.name} (${cal.method}${cal.rows?`, fitted on ${cal.rows} rows`:''}) is open. ${cal.available?'Select Apply Calibration.':cal.reason}`
     :'Calibration: none. Open an onyx calibration JSON (from the Calibration tab) to calibrate the magnetic data.';
 }
 
 $('calibration-file').onchange=event=>{openCalibration(event.target.files[0]);event.target.value='';};
+$('save-magnetic').onclick=saveMagnetic;
+$('save-electromagnetic').onclick=()=>{if(series.electromagnetic)saveOriginal(series.electromagnetic.originalFile);};
+$('save-calibration').onclick=()=>{if(cal.file)saveOriginal(cal.file);};
 $('apply-calibration').onclick=applyCalibration;
 $('show-angles').onclick=showAngles;
 $('remove-calibration').onclick=removeCalibration;

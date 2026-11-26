@@ -17,8 +17,8 @@ POST_ROUTES: dict[str, Callable[[RequestFields], Reply]] = {
     '/api/offline/load': ScanEndpoints.offline, '/api/calibration/fit': CalibrationEndpoints.fit,
     '/api/calibration/fit-file': CalibrationEndpoints.fit_file, '/api/calibration/apply': CalibrationEndpoints.apply,
     '/api/offline/calibrate': CalibrationEndpoints.offline_calibrate}
-NEEDS_CALIBRATION = frozenset(('/api/calibration/fit', '/api/calibration/fit-file', '/api/calibration/apply',
-                               '/api/offline/calibrate'))
+NEEDS_ONYX = frozenset(POST_ROUTES)
+"""Routes answered with onyx scans/calibration/navigation: every POST route."""
 
 
 class WebApiRouter:
@@ -37,7 +37,7 @@ class WebApiRouter:
         route = POST_ROUTES.get(path) if method == 'POST' else None
         if route is None:
             return Reply(404, {'error': 'Not found'})
-        if path in NEEDS_CALIBRATION:
+        if path in NEEDS_ONYX:
             available, reason = CalibrationEndpoints.support()
             if not available:
                 return Reply(503, {'error': reason})

@@ -3,8 +3,14 @@
 import math
 import unittest
 
-from offline_analysis.scans.viewer_data import viewer_data
-from analysis_helpers import mag_json, mag_scan, phasor_json, text_scan, vn100_scan
+from calibration_model import MISSING
+
+if MISSING:
+    raise unittest.SkipTest(MISSING)
+
+from analysis_helpers import mag_json, mag_scan, phasor_json, text_scan, vn100_scan  # noqa: E402
+from imu_helpers import raw_magnetic_text  # noqa: E402
+from offline_analysis.scans.viewer_data import viewer_data  # noqa: E402
 
 FIELD = ['field_T_0', 'field_T_1', 'field_T_2']
 COMBINED = ['combined_field_T_0', 'combined_field_T_1', 'combined_field_T_2']
@@ -60,6 +66,17 @@ class ViewerDataTest(unittest.TestCase):
     def test_attitude_is_none_without_all_three_angles(self):
         self.assertIsNone(viewer_data('magnetic', 'scan.csv', mag_scan())['attitude'])  # yaw only
         self.assertIsNone(viewer_data('electromagnetic', 'em.json', phasor_json([([1e-9, 0, 0], [0, 0, 0])]))['attitude'])
+
+    def test_raw_imu_scan_sends_derived_attitude(self):
+        attitude = viewer_data('magnetic', 'raw.csv', raw_magnetic_text())['attitude']
+        self.assertEqual(attitude['columns'], ['imu_yaw_rad', 'imu_pitch_rad', 'imu_roll_rad'])
+        self.assertAlmostEqual(attitude['degrees'][-1][0], math.degrees(1.0), delta=1e-3)  # 0.1 rad/s, 10 s
+
+    def test_onyx_calibrated_scan_is_labelled_enu(self):
+        import json
+        document = dict(format='onyx-scan/1', sensor='magnetic', axis='t', metadata={'calibration': {}},
+                        samples=[dict(t=0.0, field_t_x=1e-9, field_t_y=0.0, field_t_z=0.0)])
+        self.assertEqual(viewer_data('magnetic', 'cal.json', json.dumps(document))['labels'], ['E', 'N', 'U'])
 
     def test_wrong_sensor_file_and_unknown_sensor_raise(self):
         with self.assertRaisesRegex(ValueError, 'no electromagnetic phasor'):

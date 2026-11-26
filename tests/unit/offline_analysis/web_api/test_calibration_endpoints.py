@@ -6,7 +6,7 @@ import unittest
 
 from api_helpers import FIT_AVAILABLE, calibration_text, post
 from offline_analysis import web_api
-from offline_analysis.web_api.calibration_endpoints import MISSING_CALIBRATION, CalibrationEndpoints
+from offline_analysis.web_api.calibration_endpoints import MISSING_ONYX, CalibrationEndpoints
 from analysis_helpers import mag_scan
 
 
@@ -23,7 +23,7 @@ class CalibrationEndpointsTest(unittest.TestCase):
     def test_fit_without_onyx_is_503_with_the_reason(self):
         reply = post('/api/calibration/fit', {})
         self.assertEqual(reply.status, 503)
-        self.assertIn('onyx calibration package', reply.body['error'])
+        self.assertIn('onyx scans, calibration', reply.body['error'])
 
     @unittest.skipIf(FIT_AVAILABLE, 'onyx calibration is installed here')
     def test_fit_file_without_onyx_is_503(self):
@@ -59,7 +59,7 @@ class CalibrationEndpointsTest(unittest.TestCase):
     def test_fit_file_without_field_columns_is_400(self):
         reply = post('/api/calibration/fit-file', {'name': 'cal.csv', 'text': 't,temperature\n0,1\n1,2\n'})
         self.assertEqual(reply.status, 400)
-        self.assertIn('no magnetic B-field', reply.body['error'])
+        self.assertIn('no magnetic field', reply.body['error'])
 
     @unittest.skipUnless(FIT_AVAILABLE, 'needs numpy and the onyx calibration package')
     def test_fit_then_apply_round_trip(self):
@@ -98,7 +98,7 @@ class SupportTests(unittest.TestCase):
         body = CalibrationEndpoints.status().body
         self.assertEqual((body['available'], body['reason']), (available, reason))
         if not available:
-            self.assertIn(MISSING_CALIBRATION, reason or '')
+            self.assertIn(MISSING_ONYX, reason or '')
 
 
 if __name__ == '__main__':

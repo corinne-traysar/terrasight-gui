@@ -24,6 +24,7 @@ module.exports=(async()=>{
   async function next(){tasks.sort((a,b)=>a.at-b.at);const task=tasks.shift();now=task.at;task.fn();await flush();}
   await next();assert.equal(feed.latest().mc.channels[0].history.length,2);
   assert.equal(feed.latest().ap.samples.length,2,'Incremental AP230 history must be retained');
+  assert.equal(feed.latest().ap.samples_start_count,1,'Merged history must retain the matching count cursor');
   fail=true;await next();assert.equal(feed.latest().ap.status,'live','One failed request must not erase fresh AP230 data');
   for(let i=0;i<16;i++)await next();
   assert.equal(feed.latest().ap.status,'unreachable','Sustained transport loss must not remain Live');

@@ -1,19 +1,30 @@
-"""Calibration angles and scan yaw/pitch/roll for the Offline Data angle window.
+"""Tests of magnetic_calibration/calibration_angles.py: mounting, Earth-field and stored angles.
 
-Pure Python: runs without numpy or onyx. Documents are hand-built
-``onyx-vector-calibration/1`` objects.
+Needs numpy and scipy (skipped without onyx, like the module). Documents are
+hand-built ``onyx-vector-calibration/1`` objects; the scan yaw/pitch/roll
+records are tested in scans/test_attitude_record.py.
 """
-import json
 import math
 import unittest
 
-from offline_analysis.magnetic_calibration.calibration_angles import (ATTITUDE_KEY, calibration_angles, earth_angles, recording_attitude,
-                                         scan_attitude)
+from calibration_model import MISSING
 from offline_analysis.magnetic_calibration.reference import BAR_GYORA_ENU_NT
-from offline_analysis.scans.scan_io import parse_scan
-from analysis_helpers import mag_scan, vn100_scan
+
+if MISSING:
+    raise unittest.SkipTest(MISSING)
+
+import numpy as np  # noqa: E402
+from scipy.spatial.transform import Rotation  # noqa: E402
+
+from offline_analysis.magnetic_calibration.calibration_angles import (  # noqa: E402
+    ATTITUDE_KEY, calibration_angles, earth_angles, euler_zyx_deg, polar_rotation)
 
 ENU_MOUNTING = [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]]
+
+
+def zyx(yaw, pitch, roll):
+    """The rotation matrix of aerospace Z-Y-X angles in degrees."""
+    return Rotation.from_euler('ZYX', [yaw, pitch, roll], degrees=True).as_matrix()
 
 
 def document(**changes):
@@ -24,35 +35,43 @@ def document(**changes):
     return {**base, **changes}
 
 
-class ScanAttitudeTest(unittest.TestCase):
-    """scan_attitude reads the yaw/pitch/roll columns in degrees."""
+class EulerTest(unittest.TestCase):
+    """Z-Y-X yaw, pitch and roll of rotation matrices."""
 
-    def attitude(self, name, text):
-        """The attitude record of the file, failing when it has none."""
-        record = scan_attitude(parse_scan(name, text))
-        assert record is not None
-        return record
+    def test_identity_is_zero(self):
+        self.assertEqual(euler_zyx_deg(np.eye(3)), {'yaw': 0.0, 'pitch': 0.0, 'roll': 0.0})
 
-    def test_vn100_degrees_pass_through(self):
-        record = self.attitude('vn100.csv', vn100_scan(3))
-        self.assertEqual(record['columns'], ['yaw_deg', 'pitch_deg', 'roll_deg'])
-        self.assertEqual(record['degrees'], [[0.0, 1.0, -2.0], [10.0, 1.0, -2.0], [20.0, 1.0, -2.0]])
-        self.assertEqual(record['axis'], 'received_utc')
+    def test_round_trip_of_known_angles(self):
+        for angles in ((30.0, 10.0, -20.0), (-150.0, 45.0, 170.0), (90.0, -60.0, 5.0)):
+            with self.subTest(angles=angles):
+                result = euler_zyx_deg(zyx(*angles))
+                for key, want in zip(('yaw', 'pitch', 'roll'), angles):
+                    self.assertAlmostEqual(result[key], want, delta=1e-9)
 
-    def test_radians_become_degrees_and_missing_values_are_none(self):
-        record = scan_attitude(parse_scan('s.csv', 't,yaw_rad,pitch_rad,roll_rad\n0,0.5,,0\n1,1,0,-0.25\n'))
-        self.assertAlmostEqual(record['degrees'][1][0], math.degrees(1.0), places=3)
-        self.assertIsNone(record['degrees'][0][1])
-        self.assertEqual(record['axis_values'], [0.0, 1.0])
-        json.dumps(record, allow_nan=False)
+    def test_enu_sensor_mounting_is_yaw_90_roll_180(self):
+        result = euler_zyx_deg(np.array(ENU_MOUNTING))  # onyx SENSOR_ENU_TO_BODY
+        self.assertEqual((result['yaw'], result['pitch'], abs(result['roll'])), (90.0, 0.0, 180.0))
 
-    def test_scan_without_all_three_angles_has_none(self):
-        self.assertIsNone(scan_attitude(parse_scan('scan.csv', mag_scan())))
 
-    def test_recording_attitude_converts_radians(self):
-        record = recording_attitude('t', [0.0, 1.0], [[math.pi / 2, 0.0, -math.pi], [0.1, 0.2, 0.3]], ('y', 'p', 'r'))
-        self.assertEqual(record['degrees'][0], [90.0, 0.0, -180.0])
-        self.assertEqual((record['axis'], record['columns']), ('t', ['y', 'p', 'r']))
+class PolarRotationTest(unittest.TestCase):
+    """The rotation of C = R S survives any symmetric positive scale S."""
+
+    def test_rotation_is_recovered_from_scaled_matrix(self):
+        rotation = zyx(12.0, -7.0, 3.0)
+        scale = np.array([[1.05, 0.02, -0.01], [0.02, 0.97, 0.015], [-0.01, 0.015, 1.02]])
+        recovered, reflected = polar_rotation(rotation @ scale)
+        self.assertFalse(reflected)
+        np.testing.assert_allclose(recovered, rotation, atol=1e-12)
+
+    def test_negative_determinant_is_flagged_and_mirrored(self):
+        rotation = zyx(40.0, 0.0, 0.0)
+        recovered, reflected = polar_rotation(-(rotation @ np.diag([2.0, 1.0, 3.0])))
+        self.assertTrue(reflected)
+        np.testing.assert_allclose(recovered, rotation, atol=1e-12)
+
+    def test_singular_matrix_raises(self):
+        with self.assertRaisesRegex(ValueError, 'singular'):
+            polar_rotation(np.diag([1.0, 1.0, 0.0]))
 
 
 class CalibrationAnglesTest(unittest.TestCase):
