@@ -197,6 +197,8 @@ To use the tabs on the Pi as well, give the dashboard a Python 3.12 environment 
 
 The window updates while Offline Data stays open.
 
+**Save files in Offline Data.** **Save Magnetic Scan** and **Save Electromagnetic Scan** download copies in their original file formats. After applying a calibration, **Save Calibrated Scan CSV** downloads the calibrated magnetic scan with its sample axis and east, north, up, and total field in nT. **Save Open Calibration JSON** downloads the currently opened calibration file.
+
 Regression checks: the tests under `tests/unit/offline_analysis/`, `tests/integration/test_offline_calibrate_flow.py` and `tests/integration/test_raw_imu_calibration.py` (a tumble recorded with only an accelerometer and gyroscope, fitted and applied end to end; they skip without numpy, scipy and onyx) and `node tests/browser/offline/scan_views.cjs`.
 
 ### Live Calibration

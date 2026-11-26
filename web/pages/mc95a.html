@@ -17,6 +17,7 @@ main{grid-template-columns:repeat(2,minmax(0,1fr))}canvas{height:260px}@media(ma
 <p class="calibration">Sensor-equivalent display: waveform, AC RMS, peak-to-peak, spectrum and field estimates are divided by each channel’s external gain. Frequency is unchanged. Set gain to 1× when bypassing the amplifier. Settings are saved in this browser. The MCC172 removes DC; raw ADC mean is not the LJTick’s DC output offset. Changing gain rescales the displayed history.</p>
 <p class="calibration"><b>Raw ADC / Amplifier Output:</b> <span id="raw-output">Waiting for fresh readings.</span></p>
 <p id="notice" class="notice" role="status">Waiting for the Raspberry Pi.</p>
+<article id="sensor-recording" data-sensor="mc95a" aria-label="Record with IMU"></article>
 <main>
 <article><div class="panel-head"><h2>Voltage Waveform</h2><span class="unit">Sensor-Equivalent · 100 ms · µV</span></div><canvas id="wave" role="img" aria-label="Per-channel sensor voltage waveforms in microvolts"></canvas></article>
 <article><div class="panel-head"><h2>Signal Level Over Time</h2><span class="unit">Sensor-Equivalent AC RMS · µV</span></div><canvas id="trend" role="img" aria-label="Rolling AC RMS voltage over sixty seconds"></canvas></article>
@@ -34,4 +35,4 @@ main{grid-template-columns:repeat(2,minmax(0,1fr))}canvas{height:260px}@media(ma
 </article>
 </main>
 <footer>Sensor voltages → MCC172 HATs → Raspberry Pi. S1/S2 share one scan; S3 uses a shared ADC clock on the second HAT with a separate scan start. Cross-board phase alignment is unverified. AC RMS removes the mean of each 100 ms block. Plot scales expand to retain peaks; reset them after large movements. The waveform shows gain-corrected AC-coupled voltage, including residual ADC mean. Clipping checks use raw ADC data; an amplifier can saturate before the ADC clips.<br>Readings include sensor signal, movement effects and acquisition noise. Field estimates use a flat sensitivity within 50–1,000 Hz; movement transients and signals outside this band remain visible in the voltage views. Frequency peaks can include noise. The sensor cannot measure a static field or a 3D field vector. <a href="https://magneticsciences.com/magnetic-field-sensors/" target="_blank" rel="noreferrer">Manufacturer’s calibration guidance</a>. This view does not record raw samples to disk.</footer>
-<script src="/telemetry.js"></script><script src="/mc95a.js"></script></body></html>
+<script src="/telemetry.js"></script><script src="/recording-data.js"></script><script src="/recording-service.js"></script><script src="/recording-panel.js"></script><script src="/mc95a.js"></script></body></html>

@@ -35,6 +35,11 @@ def viewer_data(sensor: str, name: str, text: str) -> dict[str, Any]:
     Raises:
         ValueError: on an unknown sensor, or a file without that sensor's columns.
     """
+    if sensor == 'electromagnetic':
+        from offline_analysis.scans.recorded_channels import RecordedChannels
+        recording = RecordedChannels.viewer(LOADER.data(name, text), name, text)
+        if recording is not None:
+            return recording
     scan = LOADER.sensor_scan(sensor, name, text)
     return dict(sensor=sensor, source=name, count=scan.rows, columns=list(scan.sensor_columns),
                 labels=list(labels(scan, name, text)), attitude=AttitudeRecord.of_scan(scan),

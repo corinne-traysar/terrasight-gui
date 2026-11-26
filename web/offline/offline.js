@@ -33,10 +33,12 @@ const phasesDeg=(real,imag)=>real.map((r,i)=>[0,1,2].map(k=>Math.atan2(imag[i][k
 
 /* ---- Graphs (sensor_viewer/series.py and em_series.py). */
 function magnitudeGraph(s){
+  if(s.scalar)return {title:'MC95A independent AC field levels',unit:'nT RMS',traces:Object.fromEntries(s.scalar.filter(g=>g.unit==='nT RMS').map(g=>[g.title,g.values]))};
   if(s.sensor==='magnetic')return {title:'Magnetic |B|',unit:'nT',traces:{'|B|':s.field.map(v=>Math.hypot(...v))}};
   return {title:'Electromagnetic |B| (peak)',unit:'nT',traces:{'|B|':amplitudes(s.real,s.imag).map(a=>Math.hypot(...a))}};
 }
 function axisGraphs(s,thetaDeg,phiDeg){
+  if(s.scalar)return s.scalar.map(g=>({title:g.title,unit:g.unit,traces:{[g.title]:g.values}}));
   const axes=frameAxes(thetaDeg,phiDeg),names=frameLabels(s.labels,thetaDeg,phiDeg);
   if(s.sensor==='magnetic'){
     const parts=components(s.field,axes);
@@ -104,15 +106,18 @@ async function openFile(sensor,file){
   $('error').textContent='';$('status').textContent=`Reading ${file.name}…`;
   try{
     const contents=await readFile(file),data=await postJSON('/api/offline/load',{sensor,...contents});
-    series[sensor]={sensor,label:LABELS[sensor],source:data.source,count:data.count,labels:data.labels,file:contents,attitude:data.attitude,
-      ...(sensor==='magnetic'?{field:vectors(data.field_nt)}:{real:vectors(data.real_nt),imag:vectors(data.imag_nt)})};
+    series[sensor]={sensor,label:LABELS[sensor],source:data.source,count:data.count,labels:data.labels,file:contents,originalFile:file,attitude:data.attitude,
+      ...(data.scalar_traces?{scalar:data.scalar_traces,notice:data.notice}:sensor==='magnetic'?{field:vectors(data.field_nt)}:{real:vectors(data.real_nt),imag:vectors(data.imag_nt)})};
   }catch(error){$('error').textContent=`Cannot open ${sensor} data: ${error.message}`;showStatus();return;}
   showMain();showStatus();
+  if(dataNotice())$('status').textContent+=' · '+dataNotice();
   window.dispatchEvent(new CustomEvent('offline-loaded',{detail:{sensor}}));
 }
 
 /* Server vectors (null = missing) as arrays of numbers (NaN = missing). */
 function vectors(list){return list.map(v=>v.map(c=>c===null?NaN:c));}
+
+function dataNotice(){return SENSORS.map(s=>series[s]?.notice).filter(Boolean).join(' ');}
 
 function showStatus(){
   const loaded=SENSORS.filter(s=>series[s]).map(s=>series[s]);
@@ -133,8 +138,9 @@ function showMain(){
 function showAxes(sensor,index=null){
   const s=series[sensor];axisSensor=sensor;
   $('main-page').hidden=true;$('axis-page').hidden=false;
-  $('axis-title').textContent=`${s.label} per axis — ${s.source}${index===null?'':` · marker at sample ${index}`}`;
+  $('axis-title').textContent=`${s.scalar?'MC95A independent channels':s.label+' per axis'} — ${s.source}${index===null?'':` · marker at sample ${index}`}`;
   $('theta').value='0';$('phi').value='0';showAngles();
+  for(const id of ['theta','phi','reset-axes'])$(id).disabled=!!s.scalar;
   const grid=$('axis-grid');grid.replaceChildren();grid.className='axis-grid'+(sensor==='electromagnetic'?' two':'');
   axisEntries=axisGraphs(s,0,0).map((graph,k)=>{
     const entry=graphEntry(grid,graph,{marker:index});

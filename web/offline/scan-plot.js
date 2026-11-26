@@ -113,8 +113,9 @@ async function postJSON(path,body){
   return data;
 }
 
-function download(name,text,type='text/csv'){
-  const url=URL.createObjectURL(new Blob([text],{type:type+';charset=utf-8'}));
+function download(name,contents,type='text/csv'){
+  const blob=typeof contents==='string'?new Blob([contents],{type:type+';charset=utf-8'}):contents;
+  const url=URL.createObjectURL(blob);
   const link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }

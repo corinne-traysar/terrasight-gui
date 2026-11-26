@@ -22,6 +22,8 @@ class ScanEndpoints:
         name, data = fields.scan()
         profiles = {key: {'b_axes': list(chosen.b_axes), 'imu': list(chosen.imu)}
                     for key, chosen in ((k, p.select(data.channels)) for k, p in PROFILES.items())}
+        from offline_analysis.scans.recorded_channels import RecordedChannels
+        profiles['electromagnetic']['b_axes'] += RecordedChannels.field_columns(data)
         return Reply(200, dict(name=name, axis=data.axis, rows=data.rows, channels=data.channels,
                                axis_values=clean(data.axis_values),
                                columns={n: clean(data.column(n)) for n in data.channels},

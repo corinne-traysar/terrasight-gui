@@ -1,6 +1,9 @@
-5. [x] Instead of using your own scans and clibration use this project moudles - C:\Users\omer\VisualStudioProjects\onyx-demo-sims. Pay attention that the data received by the imu is raw (axcelerations) and we will need to transform it to angles
+1. [x] Download [ask matt.](https://github.com/mattpocock/skills) skillz, start using them as an integrated part of all my project (user rules). Especially the one which you ask me before start doing staff.
 
-6. Go over the code and check if there is still something I should migrate to onyx-demo-sims, here should only lay the endpoints and its surroundings, in the onyx-demo-sims should be the logic (the algo itself)
+2. [x] On user level, start writing suggestions to me regarding skills, prompts, and agents I can use
+
+
+6. Go over the code and check if there is still something I should migrate to onyx-demo-sims, here should only lay the endpoints and its surroundings, in the onyx-demo-sims should be the logic (the algo itself), for example, make sure that the coverting from voltage to nT isn't in this project
 
 7. This project should only be a wrapper to display the data, nothing else should be added, no algo for detecting, calibrations, saving/ reading scans etc add this to your rules so everyone using this repo will follow them (not only me)
 
