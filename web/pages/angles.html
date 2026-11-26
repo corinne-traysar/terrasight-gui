@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Calibration Angles</title><link rel="stylesheet" href="/style.css">
+<style>
+body{max-width:1300px;padding:24px}
+.banner{font:13px var(--mono);border:1px solid var(--border);background:#121410;padding:10px 12px;margin:16px 0;overflow-wrap:anywhere}
+.banner.error{color:#e58f8f;border-color:#6b3a3a}
+section{margin-top:18px}
+section>h2{font-size:18px;margin:0 0 10px}
+.card{padding:16px;margin-bottom:14px}
+.card h3{font-size:16px;margin:0;overflow-wrap:anywhere}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0}
+.tile{border:1px solid var(--border);padding:10px 12px}
+.tile small{display:block;font:11px var(--mono);color:var(--muted);text-transform:uppercase;margin-bottom:4px}
+.tile strong{font:20px var(--mono)}
+.tile span{display:block;font:12px var(--mono);color:var(--muted);margin-top:4px}
+dl.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:10px 0;font-size:13px}
+dl.facts dt{color:var(--muted)}dl.facts dd{margin:0;font:13px var(--mono);overflow-wrap:anywhere}
+.angle-plot{height:260px;margin-top:6px}
+.note{color:#ded390;font-size:13px;line-height:1.6;margin:10px 0 0}
+h4{font:11px var(--mono);color:var(--muted);text-transform:uppercase;margin:16px 0 0;letter-spacing:.6px}
+</style></head><body>
+<header><div><div class="eyebrow">Terrasight · Offline Analysis</div><h1>Calibration and Scan Angles</h1><p id="subtitle">Angles of the calibration applied in Offline Data and the yaw/pitch/roll of the open scans, in degrees.</p></div><span id="badge" class="badge waiting" role="status">Waiting</span></header>
+<p id="banner" class="banner" role="status">Waiting for Offline Data to apply a calibration…</p>
+<section aria-labelledby="calibration-heading"><h2 id="calibration-heading">Calibration</h2><div id="calibration"></div></section>
+<section aria-labelledby="scans-heading"><h2 id="scans-heading">Scans</h2><div id="scans"></div></section>
+<p class="help">Angles are aerospace Z-Y-X yaw, pitch and roll of the IMU body (forward/right/down). <b>Sensor mounting</b> is the rotation part of the calibration's correction matrix C (C = R S, S symmetric): the rotation from the sensor's axes to the IMU body that the calibration applies. The IMU method fits it; the ellipsoid method takes it from the declared Mounting option. <b>Declination</b> is the fitted Earth field's angle east of north, and <b>inclination</b> its dip below horizontal (IMU method only). The calibration scan's yaw/pitch/roll are stored in calibration files fitted in the Calibration tab from scans with attitude. Scan angles are plotted over the sample index from the file's first row. This window updates while Offline Data stays open.</p>
+<script src="/scan-plot.js"></script><script src="/angles.js"></script></body></html>

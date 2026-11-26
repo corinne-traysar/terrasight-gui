@@ -1,6 +1,6 @@
 # Terrasight GUI
 
-A Raspberry Pi bench dashboard with Overview, VN-100, MC95A, AP230, and Connect to Pi views. The live dashboard runs in `bench_app.py` on port 8000. A local read-only preview serves the same browser files and forwards telemetry to the Pi. Standalone sensor entry points remain available for bench work.
+A Raspberry Pi bench dashboard with Overview, VN-100, MC95A, AP230, and Connect to Pi views. The live dashboard runs in `dashboard/bench_app.py` on port 8000. A local read-only preview serves the same browser files and forwards telemetry to the Pi. Standalone sensor entry points remain available for bench work.
 
 ## Private Tailscale Connection
 
@@ -11,7 +11,7 @@ Copy `connection.example.json` to `connection.local.json` and set `pi_url` to `h
 Start the live dashboard in the Pi's existing environment:
 
 ```bash
-~/venvs/mcc172/bin/python ~/terrasight-gui/bench_app.py --third
+~/venvs/mcc172/bin/python ~/terrasight-gui/dashboard/bench_app.py --third
 ```
 
 To restrict its listener to the Pi's Tailscale IPv4 interface, add `--host <pi-tailscale-ip>`. Use the direct HTTP URL over Tailscale for live acquisition controls. The current origin checks expect HTTP. HTTPS reverse-proxy controls are not configured by this setup.
@@ -19,7 +19,7 @@ To restrict its listener to the Pi's Tailscale IPv4 interface, add `--host <pi-t
 On the Mac, start the local view:
 
 ```bash
-python3 scripts/preview_theme.py
+python3 desktop_tools/preview_theme.py
 ```
 
 Open `http://127.0.0.1:8766/`. `--pi-url http://<pi-tailscale-host>:8000` overrides the configured preview target. This listener remains on loopback, and acquisition commands are blocked. Use the live Pi URL for controls. The Connect to Pi panel and `Connect to Terrasight.command` use local SSH settings; the launcher joins the existing shared tmux session and does not start acquisition. Preview failures show unavailable telemetry.
@@ -31,7 +31,7 @@ The repository contains application code and tests. `connection.local.json`, cre
 Python 3.9+ on Raspberry Pi OS; no third-party packages or frontend build required. The user must have serial-port access (normally membership in `dialout`). Stop other serial readers before starting this application.
 
 ```bash
-python3 app.py --device /dev/serial/by-id/usb-FTDI_USB-RS232-WE_AV0LSPFW-if00-port0
+python3 dashboard/vn100_app.py --device /dev/serial/by-id/usb-FTDI_USB-RS232-WE_AV0LSPFW-if00-port0
 ```
 
 Open `http://mypi.local:8000` in the computer's browser, or substitute the Pi's IP address. Both devices must have network connectivity to each other; the application is the same over Ethernet or Wi-Fi. It binds to the Pi's network interfaces for this trusted local bench network. It has no login or remote sensor-control endpoints.
@@ -65,13 +65,16 @@ Recording is shared across browser tabs and continues through page reload/closur
 
 ## Code Organization
 
-| Module | Responsibility |
+| Folder | Responsibility |
 | --- | --- |
-| `vn100.py` | Serial connection, framing, checksum validation, decoding, retry, bounded measurement store |
-| `recording.py` | CSV file lifecycle, headers, sample writes, and file errors |
-| `app.py` | One HTTP application serving the browser and measurement snapshots |
-| `web/` | Browser-only values, plots, and connection status |
-| `tests/` | Real captured packet fixture, stream framing, state, HTTP delivery, and serial reconnection |
+| `sensors/` | Runs on the Pi and owns the hardware. `vn100.py`: serial connection, framing, checksum validation, decoding, retry and bounded measurement store. `recording.py`: VN-100 CSV file lifecycle. `ap230.py` and `mc95a.py` (+ `mc95a_spectrum.py`): the other readers; `ap230_serial.py`: the AP230 row format and port setup. `ap230_capture.py` (+ `ap230_capture_session.py`) and `mc95a_capture_three.py`: standalone finite captures |
+| `dashboard/` | HTTP servers. `bench_app.py`: the unified dashboard's entry point; `bench_handler.py`: its pages, telemetry and controls; `vn100_control.py`: its VN-100 start/stop. `vn100_app.py` and `mc95a_app.py`: the single-sensor servers it builds on. `connection.py`: local Pi connection settings. `pi_health.py`: Pi temperature and throttling. `web_assets.py`: finds a page file by name anywhere under `web/` |
+| `offline_analysis/` | Calibration and Offline Data views. `scans/`: scan parsing (`scan_readers.py`: text and JSON readers, `column_parser.py`), channel picks and cropping (standard library only). `magnetic_calibration/`: onyx calibration fit/apply and calibration angles. `web_api/`: the JSON endpoints (`router.py`, `scan_endpoints.py`, `calibration_endpoints.py`, `request_fields.py`, `reply.py`) |
+| `desktop_tools/` | Run on the Mac, never the Pi. `preview_theme.py`: local read-only preview (`preview_handler.py`, `preview_server.py`). `connect_pi.py`: joins the Pi's shared tmux session |
+| `web/` | Browser-only values, plots, and connection status. `pages/` (HTML), `assets/` (style, font licence, housing photo), `live/` (instrument views, VN-100 pose and capsule), `live_calibration/`, `offline/` (Calibration and Offline Data). Pages keep flat URLs such as `/pose.js`; the servers look each name up with `web_assets.py` |
+| `tests/` | `unit/` mirrors the source packages, one `test_<module>.py` per module; `integration/` runs real modules together and entry points as scripts; `browser/` mirrors `web/` (Node, no packages). Shared helpers (`analysis_helpers.py`, `calibration_model.py`, `serial_fakes.py`, ...) sit in `tests/` |
+
+Entry points run by path from any directory; each adds the repository root to `sys.path` when run directly. `connection.local.json` stays at the repository root.
 
 `VN100Reader` owns the serial file descriptor and writes decoded samples to `Measurements`. `/api/events` streams measurement batches using a sequence cursor; `/api/samples?after=N` remains available for diagnostics. The stream disables TCP buffering delays and the browser reconnects automatically. There is no database, generic sensor framework, or separate deployment. Other sensors and recording controls will be added in later steps when their requirements are known.
 
@@ -79,22 +82,24 @@ Recording is shared across browser tabs and continues through page reload/closur
 
 ```bash
 python3 -m unittest discover -s tests -v
+node tests/browser/run_all.cjs
 ```
 
-The browser cadence regression check requires Node.js for development only:
+Node.js is needed for development only. `run_all.cjs` runs every browser test in its own process. Serial reader tests use a fake port (`tests/serial_fakes.py`) and run anywhere; the pseudo-terminal tests skip outside POSIX, and the onyx calibration tests skip without numpy, scipy and onyx (set up the `.venv` described under Calibration and Offline Data to run them). Coverage:
 
 ```bash
-node tests/browser_timing.cjs
-node tests/pose.cjs
+python3 -m coverage run --source=dashboard,sensors,offline_analysis,desktop_tools,examples -m unittest discover -s tests
+python3 -m coverage report
+node --test --experimental-test-coverage tests/browser/live/*.cjs tests/browser/live_calibration/*.cjs tests/browser/offline/*.cjs
 ```
 
-It runs the actual browser code with a deterministic 40 Hz input and verifies that displayed values update at least 15 times per second, with no healthy-input gap above 100 ms. The original request/response polling loop fails with a 200 ms gap even before network latency is added.
+`tests/browser/live/browser_timing.cjs` runs the actual browser code with a deterministic 40 Hz input and verifies that displayed values update at least 15 times per second, with no healthy-input gap above 100 ms. The original request/response polling loop fails with a 200 ms gap even before network latency is added.
 
-`pose.cjs` checks the right-handed body-to-NED 3-2-1 rotation: positive yaw turns +X toward +Y, positive pitch turns +X toward -Z, and positive roll turns +Y toward +Z. It also verifies that screen-right cross screen-up points toward the camera and that positive NED yaw projects clockwise from above the table. A reversed camera basis originally mirrored yaw and roll; correcting the camera removes that reflection without per-axis sign changes. The temporary roll-only correction was removed. Received measurements, numeric readouts, and plots retain their original signs; no attitude filtering is added. Physical confirmation remains a bench check.
+`tests/browser/live/pose.cjs` checks the right-handed body-to-NED 3-2-1 rotation: positive yaw turns +X toward +Y, positive pitch turns +X toward -Z, and positive roll turns +Y toward +Z. It also verifies that screen-right cross screen-up points toward the camera and that positive NED yaw projects clockwise from above the table. A reversed camera basis originally mirrored yaw and roll; correcting the camera removes that reflection without per-axis sign changes. The temporary roll-only correction was removed. Received measurements, numeric readouts, and plots retain their original signs; no attitude filtering is added. Physical confirmation remains a bench check.
 
 The illustrative rugged housing follows the supplied product image: red chamfered casing, silver mounting tabs, black connector and gold contacts. Connector placement on -X and the side tabs follow VectorNav's [public mechanical drawing](https://www.vectornav.com/docs/default-source/mechanical-drawings/vn-100-cr-asm_v7.0.0.pdf). The supplied image is included unchanged in the expandable Housing Reference. The model is a visual aid, not a dimensional CAD model.
 
-The tests use pseudo-terminals to check fragmentation and device replacement without touching the physical sensor. Physical movement response, accuracy, Ethernet connectivity, and combined-sensor operation require separate bench checks.
+The serial tests use a fake port and, on POSIX, pseudo-terminals to check fragmentation and device replacement without touching the physical sensor. Physical movement response, accuracy, Ethernet connectivity, and combined-sensor operation require separate bench checks.
 
 ## Data and Credentials
 
@@ -105,7 +110,7 @@ Keep captures and credentials outside Git. The current bench captures live separ
 The MC95A has a separate small monitor in the same checkout. Run it on the Pi with the MCC library installed; it can run alongside the VN-100 app on port 8000. Stop other MCC172 readers first: one process must own the HAT.
 
 ```bash
-~/venvs/mcc172/bin/python ~/terrasight-gui/mc95a_app.py
+~/venvs/mcc172/bin/python ~/terrasight-gui/dashboard/mc95a_app.py
 ```
 
 Open `http://mypi.local:8001`. The monitor continuously acquires CH0 and CH1 simultaneously at 10,240 samples/s per channel from board address 0 and explicitly disables/verifies IEPE on both channels. `--address` selects another board. It shows both channels’ latest 1,024-sample voltage waveforms, 100 ms AC RMS (block mean removed), peak-to-peak voltage, mean voltage, and up to 60 seconds of RMS history. Values use microvolts; no magnetic-field calibration is applied. Waveforms are consecutive hardware samples; history timestamps are Pi block-receipt times. Display polling is independent of acquisition, so browsers may skip blocks. Overruns/incomplete blocks are reported and restart acquisition with a new history; stale data is hidden. Pause Plots freezes only the browser plots, with numeric acquisition continuing. Closing the browser does not stop acquisition; Ctrl+C in the shared Pi terminal stops the server and ADC scan.
@@ -130,13 +135,13 @@ All four plots overlay CH0 in green and CH1 in amber, with per-channel voltage, 
 
 ### Three Sensors Across Two HATs
 
-Use `mc95a_app.py --third` for S1 = HAT 0 CH0, S2 = HAT 0 CH1, S3 = HAT 1 CH0 (or the selected `--address` and next address). `--start-paused` opens the GUI without starting acquisition. All configured inputs are stopped before Pause is acknowledged. IEPE is disabled/verified on both inputs of both boards, including the unused fourth input. HAT 1 uses the shared slave ADC clock, configured before HAT 0 starts the master clock. Rates and clock synchronization flags are checked. Each board starts a separate continuous scan; sample-zero and cross-board phase alignment are not established without a common trigger. Voltage windows and spectra can be compared, but cross-board phase or propagation delay must not be inferred. An error/overrun on either board restarts the whole acquisition with cleared history.
+Use `dashboard/mc95a_app.py --third` for S1 = HAT 0 CH0, S2 = HAT 0 CH1, S3 = HAT 1 CH0 (or the selected `--address` and next address). `--start-paused` opens the GUI without starting acquisition. All configured inputs are stopped before Pause is acknowledged. IEPE is disabled/verified on both inputs of both boards, including the unused fourth input. HAT 1 uses the shared slave ADC clock, configured before HAT 0 starts the master clock. Rates and clock synchronization flags are checked. Each board starts a separate continuous scan; sample-zero and cross-board phase alignment are not established without a common trigger. Voltage windows and spectra can be compared, but cross-board phase or propagation delay must not be inferred. An error/overrun on either board restarts the whole acquisition with cleared history.
 
-With the GUI process stopped, `~/venvs/mcc172/bin/python ~/terrasight-gui/mc95a_capture_three.py` saves a complete five-second raw three-input capture and labeled metadata under `~/bench-data/mc95a/three_sensor_<UTC>/`. The CSV retains all samples; spectral summaries discard the first second. S1/S2/S3 are port labels rather than serial-number identities or declarations of sensor health.
+With the GUI process stopped, `~/venvs/mcc172/bin/python ~/terrasight-gui/sensors/mc95a_capture_three.py` saves a complete five-second raw three-input capture and labeled metadata under `~/bench-data/mc95a/three_sensor_<UTC>/`. The CSV retains all samples; spectral summaries discard the first second. S1/S2/S3 are port labels rather than serial-number identities or declarations of sensor health.
 
 ## Unified Bench Dashboard
 
-Run `~/venvs/mcc172/bin/python ~/terrasight-gui/bench_app.py --third` in the Pi's shared terminal, then open `http://mypi.local:8000/`. All instruments start stopped. Overview, VN-100, MC95A and Connect to Pi share one server. The existing VN-100 pose/plots/CSV recording and the MC95A plots remain available as instrument tabs. Start/Stop VN-100 controls its serial reader; MC95A Pause/Resume controls all configured ADC scans. The default VN-100 serial path is the previously used FTDI by-id path; override it with `--device` if the adapter changes. An unplugged VN-100 does not block the rest of the dashboard. Co-display does not establish VN-100/MCC172 time alignment.
+Run `~/venvs/mcc172/bin/python ~/terrasight-gui/dashboard/bench_app.py --third` in the Pi's shared terminal, then open `http://mypi.local:8000/`. All instruments start stopped. Overview, VN-100, MC95A and Connect to Pi share one server. The existing VN-100 pose/plots/CSV recording and the MC95A plots remain available as instrument tabs. Start/Stop VN-100 controls its serial reader; MC95A Pause/Resume controls all configured ADC scans. The default VN-100 serial path is the previously used FTDI by-id path; override it with `--device` if the adapter changes. An unplugged VN-100 does not block the rest of the dashboard. Co-display does not establish VN-100/MCC172 time alignment.
 
 Pi health samples CPU temperature and firmware voltage/throttling flags every three seconds, independent of the browser. At 75°C it requests MC95A pause and stops VN-100 reception/recording; restart controls remain blocked until temperature drops below 70°C. Acquisition remains stopped after cooling until manually resumed. Current flags are distinguished from earlier-this-boot flags. Missing telemetry is shown as unknown, not interpreted as healthy. This is a conservative acquisition-load guard, not physical cooling or a guarantee against overheating; retain the Pi's built-in thermal protections and use adequate airflow/active cooling. No fan settings or firmware/kernel settings are changed.
 
@@ -152,10 +157,48 @@ X/Y/Z and total-field values are shown in microtesla (ASCII Gauss values multipl
 
 The MC95A detail view targets one request every 100 ms, including transfer and drawing time. It requests only new history points and the spectrum bins needed for the selected frequency range; gzip reduces transfer size. The browser retains the 60-second history and clears prior data when the acquisition history or server restarts. Waveform samples, ADC acquisition rate, spectral analysis and field calculations are unchanged. The configuration line shows the achieved rate of fresh display updates over the last five seconds. Actual refresh depends on the network, selected spectrum range and browser load.
 
-Display regression checks: `python3 -m unittest discover -s tests -p test_mc95a_display.py` and `node tests/mc95a_display.cjs`.
+Display regression checks: `python3 -m unittest discover -s tests -p test_mc95a_display.py` and `node tests/browser/live/mc95a_display.cjs`.
 
 ### Shared Instrument Views
 
 Overview and its MC95A/AP230 instrument iframes use one compressed incremental telemetry feed targeting 10 display updates/s. VN-100 Overview and detail share one continuous event stream targeting 20 display updates/s, retained when switching pages. Existing history seeds each newly opened detail view. Health updates do not overwrite instrument badges. Gain and MC95A sensitivity settings are saved per browser origin and shared immediately across instrument views and other tabs on that origin. The local read-only preview and live Pi serve the same page files; use the live Pi URL for acquisition controls and one consistent settings origin. Display sharing does not establish hardware time synchronization.
 
-The preview requests compressed telemetry, resolves the Pi hostname once, and caches distinct query cursors separately. Both preview and Pi require a page reload after a frontend update. Regression checks include `node tests/telemetry.cjs` and `node tests/overview.cjs`.
+The preview requests compressed telemetry, resolves the Pi hostname once, and caches distinct query cursors separately. Both preview and Pi require a page reload after a frontend update. Regression checks include `node tests/browser/live/telemetry.cjs` and `node tests/browser/live/overview.cjs`.
+
+## Calibration and Offline Data
+
+The dashboard's Calibration and Offline Data tabs (`/calibration`, `/offline`) work on files, not live acquisition. They are ported from the Simulation-Examples `calibration_crop`, `sensor_calibration` and `sensor_viewer` windows. The browser reads the chosen file and sends its text with each request to `offline_analysis/web_api/`; the server stores nothing. The local preview answers these requests itself, on the Mac's files, and never forwards them to the Pi; acquisition controls stay read-only there.
+
+**Calibration.** Open a CSV, TSV, whitespace text or JSON scan, including the Pi's VN-100 recordings. The sensor type (magnetic or electromagnetic) pre-selects the B-axis channels (`Bx [nT]`, `field_T_2`, `magnetic_x_gauss`; `Bx_re`, `field_T_imag_1`, `theta_rad_2`) and the IMU channels (`acc_*`, `gyro_*`, yaw/pitch/roll, `qw`…, `acceleration_*`, `angular_rate_*`); change the selection in the channel list if a name was missed. B axes, IMU and other channels are drawn in separate strips, each channel scaled to its strip. Drag across the plot, or type start and end, to mark the calibration window. **Save Cropped…** downloads the sample axis plus the selected channels inside the window (edges included). **Show Yaw/Pitch/Roll** opens the attitude of the rows inside the window, in degrees as the calibration reads them, with each angle's range; it follows the window as you drag and warns when an angle column is not selected. **Extract Calibration File…** fits the window and selected channels with the options under Fit Magnetic Calibration and saves the onyx calibration JSON in one step. The sample axis is the first of `time`/`timestamp`/`t`/`received_utc`, `distance_m`, `s`, `source_index`/`sample`/`index`, else the row number; ISO-8601 times become seconds from the first row, and nested JSON values are flattened (`field_T.real[0]` → `field_T_real_0`).
+
+**Calibrate from File…** is the one-button calibration: import a calibration scan (any file the view reads, for example a saved crop) and every row of it is fitted with the onyx `calibration` package, no scan needs to be open. The file decides the calibration: with yaw, pitch and roll columns it uses the IMU method, without them the ellipsoid method (without IMU); the panel says which it chose, why, and how many rows were used. **Fit Cropped Window** instead fits the open scan's window and selected channels. Both offer the result as onyx JSON (`onyx-vector-calibration/1`). For the window fit, method `auto` uses `imu` when yaw, pitch and roll are selected (offset, scale, soft iron, misalignment to the IMU and the Earth field), otherwise `ellipsoid` (|B| is calibrated; components keep the sensor's misalignment). The reference |B| defaults to WMM2025 Bar-Gyora, 45,201.5 nT. Mounting matters only for the ellipsoid method: `enu` means sensor X/Y/Z point east/north/up when level and facing north (the synthetic data), `body` means forward/right/down (the VN-100). **Download Calibrated Scan** applies the fitted or an opened calibration JSON to every row of the open scan, as `C (B_raw − b)`, and downloads the sample axis plus `B_east_nT`, `B_north_nT`, `B_up_nT` and `B_total_nT`. It rotates with the scan's yaw/pitch/roll when present, else it assumes a level, north-facing sensor. B units come from the column names (T, µT, nT, gauss; none means nT); angle columns with `rad` or `deg` in the name use that unit, otherwise values beyond ±2π are read as degrees. Rows with a missing value are skipped.
+
+Fitting and applying need numpy and the onyx `calibration` package, which requires Python 3.12+. The Pi's Python does not need them: loading, cropping and Offline Data still work, and the Fit panel explains what is missing. To fit on the Mac, run the preview with a Python that has them. Installing an onyx-demo-sims checkout that has `calibration/` and its local `pyproject.toml` (the `onyx-calibration` distribution) brings numpy and scipy:
+
+```bash
+python3.12 -m venv .venv && .venv/bin/pip install -e ../onyx-demo-sims --config-settings editable_mode=compat
+.venv/bin/python desktop_tools/preview_theme.py
+```
+
+**Offline Data.** Open a magnetic and/or electromagnetic file. The main page shows |B| over the sample index (counted from the first row): magnetic |B|, and electromagnetic |B| (peak, all axes). Clicking a graph opens that sensor's per-axis page with a marker at the clicked sample; **← Back** returns. Magnetic data gives three graphs (B along each axis); electromagnetic data gives six (peak amplitude √(Re² + Im²) along each axis on the left, phase atan2(Im, Re) in degrees on the right). The θ and φ sliders rotate the measuring axes: θ is the angle of the third axis from the file's third axis (Up), φ its azimuth from the first axis (East). Rotated axes are primed (E′, N′, U′), **Reset Axes** returns to the file's axes, and |B| is the same in every frame. Values are shown in nT. The magnetic vector is `combined_field_T` when present, else columns such as `Bx/By/Bz`, `magnetic_x_gauss…` or a calibrated scan's `B_east_nT…`; the electromagnetic phasor is `field_T.real/imag` or `Bx_re/Bx_im`-style columns. Axes are E/N/U for east-north-up files, else x/y/z.
+
+**Apply calibration in Offline Data.** **Open Calibration…** takes an onyx calibration JSON (for example one extracted in the Calibration tab), and **Apply Calibration** corrects the open magnetic file with it on the server (`/api/offline/calibrate`). The magnetic graphs then show the calibrated B east/north/up in nT. Rows with a missing B or angle are dropped. The scan's yaw/pitch/roll rotate the field when present; without them the sensor is taken as level and facing north. **Remove Calibration** returns to the file's values, and opening a new magnetic file clears the calibration. Applying opens a new window (`/angles`; **Show Angles** reopens it) with these angles in degrees:
+
+- **Calibration:** the sensor mounting, which is the aerospace Z-Y-X yaw/pitch/roll of the rotation part of the correction matrix (C = R S). The IMU method fits it; the ellipsoid method declares it.
+- **Earth field:** declination and inclination of the fitted Earth field (IMU method only).
+- **Calibration scan:** its yaw/pitch/roll. Calibrations fitted in the Calibration tab from scans with attitude now store these under the extra key `calibration_attitude`; onyx ignores the key.
+- **Open scans:** the yaw/pitch/roll of every open scan.
+
+The window updates while Offline Data stays open. Applying needs numpy and onyx, like fitting does.
+
+Regression checks: the tests under `tests/unit/offline_analysis/` and `tests/integration/test_offline_calibrate_flow.py` (the calibration tests skip without numpy, scipy and onyx) and `node tests/browser/offline/scan_views.cjs`.
+
+### Live Calibration
+
+The VN-100 and AP230 views have a **Live Calibration** panel. **Open Calibration…** takes an onyx calibration JSON (`onyx-vector-calibration/1`, for example one extracted in the Calibration tab), and the view then also shows the calibrated field east/north/up and |B| in nT next to the raw values. The panel shows the calibrated |B| beside the calibration's reference |B| as a quick check. **Remove Calibration** returns to raw values only.
+
+The browser applies the calibration to every live sample with the same math as onyx: `C (B_raw − b)` in the IMU body frame forward/right/down, then rotated to east/north/up. VN-100 samples are rotated with their own yaw/pitch/roll. The AP230 has no attitude, so its calibrated field assumes a level, north-facing sensor. Only |B| is meaningful while it is turned. With an ellipsoid calibration, |B| is calibrated, but the components keep the sensor's misalignment.
+
+This is display-only: the Pi, raw plots, CSV recordings and other browsers are unchanged, and the Pi needs no numpy or onyx. The calibration is saved per sensor in this browser for the dashboard's origin. It survives page reloads and reaches other tabs on that origin. The local preview and the live Pi URL are different origins, so each keeps its own. Use a calibration fitted for the same sensor and mounting; the panel cannot tell which sensor a calibration was fitted on.
+
+Regression checks: `node tests/browser/live_calibration/live_calibration.cjs` (compared with onyx's own output for `examples/mock_calibration.json`), `node tests/browser/live_calibration/live_calibration_panel.cjs`, and `python3 -m unittest discover -s tests -p "test_bench_handler*.py"`. On Windows, `tests/posix_stubs.py` lets the serial sensor modules import for tests that never open a port.

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Terrasight Bench Test</title><link rel="stylesheet" href="/style.css">
+  <script src="/pose.js" defer></script><script src="/capsule.js" defer></script><script src="/telemetry.js" defer></script>
+  <script src="/live-calibration.js" defer></script><script src="/live-calibration-sensors.js" defer></script>
+  <script src="/live-calibration-panel.js" defer></script><script src="/app.js" defer></script>
+</head>
+<body>
+  <header><div><div class="eyebrow">TERRASIGHT / BENCH TEST</div><h1>IMU - VN100</h1>
+    <p>Acquired and decoded on the Raspberry Pi · displayed on your computer</p></div>
+    <div id="status" role="status" class="badge waiting">Connecting</div></header>
+  <section class="summary" aria-label="Connection Details">
+    <div><span>Sensor</span><strong>VectorNav VN-100</strong></div>
+    <div><span>Connection</span><strong>USB · 115200 baud</strong></div>
+    <div><span>Last sample</span><strong id="last">Waiting</strong></div>
+    <div><span>Valid / Rejected</span><strong id="counts">—</strong></div>
+  </section>
+  <p id="notice" class="notice">Waiting for the Pi. Historical values will remain visible if live data stops.</p>
+  <article class="recording-panel" aria-label="CSV Recording">
+    <div class="panel-head"><h2>CSV Recording</h2><span id="recording-status" class="unit" role="status">Checking</span></div>
+    <div class="pose-controls">
+      <button id="start-recording" type="button" disabled>Start Recording</button>
+      <button id="stop-recording" type="button" disabled>Stop Recording</button>
+    </div>
+    <p id="recording-detail" class="pose-caption">CSV files are saved on the Pi. Live display continues while recording.</p>
+    <p id="recording-path" class="recording-path"></p>
+    <p id="recording-error" class="recording-error" role="alert"></p>
+  </article>
+  <article id="live-calibration" class="recording-panel" aria-label="Live Calibration"></article>
+  <article class="orientation-panel">
+    <div class="panel-head"><h2>Capsule Orientation</h2><span class="unit" id="pose-status">Waiting</span></div>
+    <canvas id="pose" role="img" aria-label="Waiting for attitude measurements"></canvas>
+    <div class="pose-controls">
+      <button id="align-view" type="button" disabled>Align View</button>
+      <button id="reset-view" type="button" disabled>Reset View</button>
+    </div>
+    <p id="view-reference" class="pose-caption" role="status">Default view. Place the sensor flat with its connector toward you, then select Align View. Alignment resets on page reload.</p>
+    <p class="pose-caption">Capsule wireframe · photo-based planned mounting · VN-100 connector toward Pi.<br>Capsule +Z points toward Pi; +X points through the open face. VN-100 +X points toward the sensing end. Physical mounting is not yet fixed.</p>
+    <details class="housing-reference"><summary>Housing Reference</summary>
+      <img src="/vn100-reference.png" alt="Provided reference showing the red rugged VN-100 housing, its connector and mounting tabs, alongside the silver SMD version">
+      <p class="pose-caption">The VN-100 is highlighted inside the capsule wireframe.</p>
+    </details>
+  </article>
+  <main id="plots"></main>
+  <footer>Last 60 seconds · timestamps are Pi receipt times · values are calibrated/compensated measurements and calculated attitude.
+    <br>Recording saves validated samples on the Pi, with Pi receipt timestamps. View alignment does not change recorded values.
+    <br>Live calibration changes only this browser's display; the Pi, plots of raw values and recordings keep raw measurements.</footer>
+</body></html>
