@@ -7,7 +7,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from api_helpers import preview
+from api_helpers import page_links, preview
 from offline_analysis import web_api
 from analysis_helpers import mag_scan
 
@@ -26,7 +26,7 @@ class PreviewHTTPTest(unittest.TestCase):
 
             do_POST = do_GET
 
-            def log_message(self, *_):
+            def log_message(self, format, *args):  # noqa: A002  (the base class names it format)
                 pass
 
         self.upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
@@ -64,6 +64,12 @@ class PreviewHTTPTest(unittest.TestCase):
                 status, body, _ = self.request(path)
                 self.assertEqual(status, 200)
                 self.assertIn(marker, body)
+
+    def test_every_file_a_page_links_to_is_served(self):
+        for link in page_links():
+            with self.subTest(link=link):
+                self.assertEqual(self.request(link)[0], 200)
+        self.assertEqual(self.upstream_reads, [])
 
     def test_analysis_runs_locally_with_same_origin_and_gzip(self):
         body = json.dumps({'name': 'scan.csv', 'text': mag_scan()}).encode()

@@ -79,7 +79,8 @@ class DirectCallTest(unittest.TestCase):
         reply = ScanEndpoints.load(RequestFields({'name': 'scan.csv', 'text': mag_scan()}))
         self.assertEqual(reply.status, 200)
         self.assertEqual(sorted(reply.body), ['attitude', 'axis', 'axis_values', 'channels', 'columns', 'name',
-                                              'profiles', 'rows'])
+                                              'profiles', 'recording_kind', 'rows'])
+        self.assertIsNone(reply.body['recording_kind'], 'a plain CSV is not a sensor recording')
         self.assertEqual(reply.body['axis_values'][:3], [0.0, 1.0, 2.0])
 
     def test_crop_counts_rows_and_channels(self):
