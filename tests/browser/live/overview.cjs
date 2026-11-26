@@ -1,0 +1,42 @@
+/* Regression checks for Overview data integrity; no hardware or browser needed. */
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const path=require('node:path');
+const { runWebScript } = require('../web_files.cjs');
+const nodes=new Map(),drawCalls=[];
+const drawing=new Proxy({}, {get:(_,key)=> (...args)=>drawCalls.push([key,...args]),set:()=>true});
+function node(id){if(!nodes.has(id))nodes.set(id,{id,value:({'vn-metric':'attitude','mc-metric':'trend','ap-metric':'total'})[id]||'',hidden:false,textContent:'',className:'',style:{},clientWidth:500,clientHeight:250,selectedOptions:[{text:'Test Metric'}],setAttribute(){},replaceChildren(...children){this.children=children;this.textContent=children.map(c=>c.textContent).join('');},append(...children){this.textContent+=children.map(c=>c.textContent||'').join('');},querySelector(){return null;},getContext(){return drawing;}});return nodes.get(id);}
+const storage=new Map(),requests=[],streams=[];
+const context=vm.createContext({console,Date,Math,Number,String,JSON,Promise,performance:{now:()=>1000},AbortSignal:{timeout(){}},setTimeout(){},requestAnimationFrame(fn){fn();},ResizeObserver:class{observe(){}},EventSource:class{constructor(url){this.url=url;streams.push(this);}close(){this.closed=true;}},localStorage:{getItem:k=>storage.get(k)||null},fetch:(url,options)=>{requests.push([url,options]);return new Promise(()=>{});},document:{getElementById:node,querySelectorAll:()=>[],createElement:()=>({style:{},textContent:'',append(...children){this.textContent+=children.map(c=>c.textContent||'').join('');}}),createTextNode:text=>({textContent:text})},window:{BenchTelemetry:{subscribeVN(){const stream={closed:false};streams.push(stream);return()=>{stream.closed=true;};},subscribe(){},setSpectrumMaximum(){},settings:{gain:ch=>Number(storage.get(`mc95a-gain-${ch}`)||(ch===0?51:1)),sensitivity:ch=>Number(storage.get(`mc95a-sensitivity-${ch}`)||1),subscribe(){}}},devicePixelRatio:1,VN100Pose:{createCapsule:()=>({update(){},draw(){}})}}});
+runWebScript('bench.js',context);
+const run=source=>vm.runInContext(source,context);
+assert.equal(run("$('vn-metric').value"),'attitude');
+run("overview.mc={status:'live',channels:[{channel:0,latest:{t:1,ac_rms_V:.051,peak_to_peak_V:.102,waveform_V:[.051]},history:[{t:1,ac_rms_V:.051,band_rms_V:.051}],spectrum:{band_rms_V:.051,peak_Hz:200,frequency_Hz:[200],asd_V_sqrtHz:[.051]}}],sample_rate_Hz:10240};overview.mcFreshAt=1000;drawOverview();");
+assert.match(node('mc-values').textContent,/1,000 µV/,'Overview must apply the same 51× default as the detailed display');
+run("$('mc-metric').value='field';drawOverview();");
+assert.match(node('mc-values').textContent,/100 nT/,'Nominal 1 mV/mG converts .001 V to 100 nT');
+storage.set('mc95a-gain-0','1');run('drawOverview()');
+assert.match(node('mc-values').textContent,/5,100 nT/,'Saved gain changes must be reflected without reload');
+run("overview.mc.status='paused';drawOverview();");
+assert.equal(node('mc-values').textContent,'Acquisition paused.');
+run("overview.mc.status='live';overview.mcFreshAt=-2000;drawOverview();");
+assert.equal(node('mc-status').textContent,'Stale');assert.equal(node('mc-values').textContent,'No fresh MC95A readings.');
+run("receiveOverviewVN({status:'live',session:'a',samples:[{sequence:100,received_ms:1000,attitude:[0,0,0]}]});receiveOverviewVN({status:'live',session:'b',samples:[{sequence:1,received_ms:2000,attitude:[0,0,0]}]});");
+assert.equal(run('overview.vnAfter'),1,'A new acquisition session must reset sequence tracking');
+assert.equal(run('overview.vnHistory.length'),1);
+run("receiveOverviewVN({status:'live',session:'c',samples:Array.from({length:3000},(_,i)=>({sequence:i+1,received_ms:i,attitude:[0,0,0]}))});");
+assert.equal(run('overview.vnHistory.length'),2400,'Overview history must remain bounded');
+drawCalls.length=0;
+run("overviewChart('temperature-plot',[{color:'#fff',points:[[-4,55],[-2,56],[0,57]]}],{unit:'°C',gap:5,threshold:75});");
+assert.ok(drawCalls.filter(c=>c[0]==='lineTo').length>=7,'Two-second health samples must connect into a trend');
+assert.ok(requests.every(([,options])=>!options?.method||options.method==='GET'),'Overview must not send acquisition commands');
+run("setOverviewStream(false)");assert.equal(streams[0].closed,false,'Switching views must keep the one shared IMU stream alive');
+console.log('Overview integrity checks passed: gain, units, stale/paused values, restart, bounded history, temperature trend and read-only telemetry.');
+
+storage.set('mc95a-sensitivity-0','2');run('drawOverview()');
+run("overview.mc.status='live';overview.mcFreshAt=1000;drawOverview();");
+assert.match(node('mc-values').textContent,/2,550 nT/,'Overview must use the detail sensitivity setting');
+node('ap-status').textContent='Live';
+run("receiveHealth({temperature_C:50,age_s:0,thermal_guard_active:false,flags:{},errors:[]},{running:true})");
+assert.equal(node('ap-status').textContent,'Live','Health polling must not overwrite AP230 status');

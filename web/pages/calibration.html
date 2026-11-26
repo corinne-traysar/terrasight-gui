@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Calibration</title><link rel="stylesheet" href="/style.css">
+<style>
+body{max-width:1500px;padding:24px}
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:20px 0 14px}
+.toolbar label.field{display:flex;align-items:center;gap:8px;font:11px var(--mono);color:var(--muted);text-transform:uppercase}
+.toolbar .spacer{flex:1}
+input[type=text]{font:14px var(--mono);color:var(--text);background:#20251c;border:1px solid #4a4e3d;border-radius:4px;padding:8px 10px;width:130px}
+.file-button input{display:none}.file-button.disabled{opacity:.45;cursor:default;pointer-events:none}
+.crop-layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px}
+.channels{padding:16px;display:flex;flex-direction:column;max-height:640px}
+.channels h2,.cal-grid h2{font-size:16px;margin-bottom:10px}
+.channel-actions{display:flex;gap:8px;margin-bottom:10px}
+.channel-actions button{font-size:12px;padding:5px 10px}
+#channel-list{overflow-y:auto;flex:1;font:12px var(--mono);border-top:1px solid var(--border);padding-top:8px}
+#channel-list label{display:flex;align-items:center;gap:8px;padding:3px 2px;cursor:pointer;overflow-wrap:anywhere}
+#channel-list label:hover{color:#fff}
+#channel-list .group{color:var(--dim);font-size:10px;letter-spacing:.8px;text-transform:uppercase;margin:4px 0 0}
+.plot-panel{padding:14px}
+#plot{height:520px;cursor:crosshair;touch-action:none}
+.window-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:10px;padding-top:12px;font-size:14px;color:var(--muted)}
+.status-line{font:12px var(--mono);color:var(--muted);border:1px solid var(--border);background:#121410;padding:8px 12px;margin:14px 0 18px;overflow-wrap:anywhere}
+.cal-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.options{display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:center;margin:14px 0}
+.options label{font:11px var(--mono);color:var(--muted);text-transform:uppercase}
+.options select,.options input{justify-self:start}
+dl.summary-list{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:14px 0 0;font-size:13px}
+dl.summary-list dt{color:var(--muted)}dl.summary-list dd{margin:0;font:13px var(--mono);overflow-wrap:anywhere}
+.cal-source{font:12px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.attitude-panel{margin-top:16px;padding:16px}
+.attitude-stats{display:flex;flex-wrap:wrap;gap:8px 28px;margin:4px 0 8px;font:13px var(--mono)}
+.attitude-stats small{display:block;font:11px var(--mono);color:var(--muted);text-transform:uppercase}
+#attitude-plot{height:300px}
+.unavailable{color:#ded390;font-size:13px;line-height:1.6;margin:10px 0 0}
+@media(max-width:900px){.crop-layout,.cal-grid{grid-template-columns:1fr}.channels{max-height:260px}#plot{height:420px}}
+</style></head><body>
+<header><div><div class="eyebrow">Terrasight · Offline Analysis</div><h1>Calibration</h1><p>Crop a scan to its calibration segment (B axes and IMU), fit a magnetic calibration with the onyx calibration package, and apply it to a scan.</p></div><span id="badge" class="badge waiting" role="status">No Scan</span></header>
+<div class="toolbar">
+  <label class="button file-button">Open Scan…<input type="file" id="scan-file" accept=".csv,.tsv,.txt,.dat,.json"></label>
+  <label class="field" for="sensor">Sensor <select id="sensor"><option value="magnetic">Magnetic</option><option value="electromagnetic">Electromagnetic</option></select></label>
+  <button id="show-attitude" disabled aria-expanded="false" aria-controls="attitude-panel">Show Yaw/Pitch/Roll</button>
+  <span class="spacer"></span>
+  <button id="save" disabled>Save Cropped…</button>
+  <button id="extract" disabled title="Fit the calibration window with the options under Fit Magnetic Calibration and save the onyx calibration JSON">Extract Calibration File…</button>
+</div>
+<p id="error" role="alert"></p>
+<div class="crop-layout">
+  <article class="channels"><h2>Channels to Keep</h2>
+    <div class="channel-actions"><button id="pick-sensor" disabled title="Select the sensor's B-axis and IMU channels">Sensor Picks</button><button id="pick-none" disabled>None</button></div>
+    <div id="channel-list" role="group" aria-label="Channels to keep"><p class="help">Open a scan (CSV, TSV, text or JSON).</p></div>
+  </article>
+  <article class="plot-panel">
+    <canvas id="plot" role="img" aria-label="Selected channels over the sample axis with the calibration window shaded"></canvas>
+    <div class="window-bar"><span>Drag on the plot, or type the calibration window. Start:</span><input type="text" id="start" inputmode="decimal" aria-label="Window start"><span>End:</span><input type="text" id="end" inputmode="decimal" aria-label="Window end"><button id="apply-window" disabled>Apply</button><button id="whole-scan" disabled>Whole Scan</button></div>
+  </article>
+</div>
+<article id="attitude-panel" class="attitude-panel" hidden>
+  <div class="panel-head"><h2>Calibration Scan Attitude</h2><span id="attitude-rows" class="badge"></span></div>
+  <p class="help">Yaw, pitch and roll of the rows inside the calibration window, in degrees, as the calibration will read them. The IMU method needs readings from varied attitudes; it reports an error when they barely change.</p>
+  <div id="attitude-stats" class="attitude-stats"></div>
+  <canvas id="attitude-plot" role="img" aria-label="Yaw, pitch and roll in degrees across the calibration window"></canvas>
+  <p id="attitude-note" class="unavailable" hidden></p>
+</article>
+<p id="status" class="status-line">Open a scan (CSV, TSV, text or JSON).</p>
+<section class="cal-grid">
+  <article><div class="panel-head"><h2>Fit Magnetic Calibration</h2><span id="fit-badge" class="badge waiting">Checking</span></div>
+    <p class="help"><b>Calibrate from File…</b> imports a calibration scan (for example a saved crop) and fits all of it. The file decides the calibration: with yaw, pitch and roll columns it uses the IMU method (offset, scale, soft iron, misalignment to the IMU and the Earth field); without them, the ellipsoid method (|B| is calibrated; components keep the sensor's misalignment). <b>Fit Cropped Window</b> fits the open scan's window and selected channels instead, with the method below.</p>
+    <div class="options">
+      <label for="method">Method (window)</label><select id="method"><option value="auto">Auto (from the data)</option><option value="ellipsoid">Ellipsoid (B only)</option><option value="imu">IMU (B + yaw/pitch/roll)</option></select>
+      <label for="reference">Reference |B|</label><span><input type="text" id="reference" inputmode="decimal" aria-label="Reference field magnitude in nanotesla"> <span class="unit">nT · true |B| at the calibration site</span></span>
+      <label for="mounting">Mounting</label><select id="mounting"><option value="enu">ENU: X/Y/Z = east/north/up when level, facing north</option><option value="body">Body: X/Y/Z = forward/right/down (VN-100)</option></select>
+    </div>
+    <div class="actions"><label class="button file-button" id="fit-file-button">Calibrate from File…<input type="file" id="fit-file" accept=".csv,.tsv,.txt,.dat,.json" disabled></label><button id="fit" disabled>Fit Cropped Window</button><button id="download-calibration" disabled>Download Calibration JSON</button></div>
+    <p id="fit-unavailable" class="unavailable" hidden></p>
+    <p id="fit-decision" class="cal-source" hidden></p>
+    <dl id="fit-summary" class="summary-list"></dl>
+  </article>
+  <article><div class="panel-head"><h2>Apply Calibration</h2></div>
+    <p class="help">Corrects every row of the open scan with C (B<sub>raw</sub> − b) and writes the sample axis plus B east/north/up and |B| in nT. Uses the scan's yaw/pitch/roll when present, otherwise assumes a level, north-facing sensor. The output opens in Offline Data.</p>
+    <p class="cal-source">Calibration: <span id="cal-source">none yet. Fit one, or open a calibration JSON.</span></p>
+    <div class="actions"><label class="button file-button">Open Calibration JSON…<input type="file" id="calibration-file" accept=".json"></label><button id="apply" disabled>Download Calibrated Scan</button></div>
+    <dl id="apply-summary" class="summary-list"></dl>
+  </article>
+</section>
+<p class="help">Files are read by this browser and sent to the dashboard server for parsing; nothing is stored on the server. B units come from the column names (T, µT, nT, gauss; none means nT). Yaw/pitch/roll are aerospace Z-Y-X angles of the IMU body (forward/right/down); <code>rad</code> or <code>deg</code> in the name sets the unit, otherwise values beyond ±2π are read as degrees. Rows with a missing value are skipped by the fit.</p>
+<script src="/scan-plot.js"></script><script src="/calibration-plot.js"></script><script src="/calibration-fit.js"></script><script src="/calibration.js"></script></body></html>

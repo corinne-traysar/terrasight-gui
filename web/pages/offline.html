@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline Data</title><link rel="stylesheet" href="/style.css">
+<style>
+body{max-width:1500px;padding:24px}
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:20px 0 14px}
+.toolbar .spacer{flex:1}
+.file-button input{display:none}
+.cal-line{font:12px var(--mono);color:var(--muted);margin:0 0 12px;overflow-wrap:anywhere}
+.cal-line.applied{color:var(--text)}
+.status-line{font:12px var(--mono);color:var(--muted);border:1px solid var(--border);background:#121410;padding:8px 12px;margin:14px 0;overflow-wrap:anywhere}
+.graph{padding:10px 12px;margin-bottom:12px}
+.graph canvas{height:300px}
+.graph.clickable canvas{cursor:pointer}
+.empty{padding:60px 20px;text-align:center;color:var(--muted)}
+.page-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.page-bar h2{font-size:18px;flex:1;min-width:240px}
+.sliders{display:grid;grid-template-columns:auto minmax(120px,1fr) 56px auto minmax(120px,1fr) 56px;gap:10px 12px;align-items:center;padding:12px 0 14px;border-block:1px solid var(--border);margin-bottom:12px}
+.sliders label{font:11px var(--mono);color:var(--muted);text-transform:uppercase}
+.sliders output{font:13px var(--mono);text-align:right}
+input[type=range]{width:100%;accent-color:var(--olive)}
+.axis-grid{display:grid;gap:10px}
+.axis-grid.two{grid-template-columns:1fr 1fr}
+.axis-grid article{padding:8px 10px}
+.axis-grid canvas{height:210px}
+@media(max-width:900px){.sliders{grid-template-columns:auto 1fr 50px}.axis-grid.two{grid-template-columns:1fr}}
+</style></head><body>
+<header><div><div class="eyebrow">Terrasight · Offline Analysis</div><h1>Offline Data</h1><p>See magnetic and electromagnetic data from a file: |B| over the sample index, then B along each axis (and phase for electromagnetic data) in an axis frame you can rotate.</p></div><span id="badge" class="badge waiting" role="status">No Data</span></header>
+<div class="toolbar">
+  <label class="button file-button">Open Magnetic…<input type="file" id="magnetic-file" accept=".json,.csv,.tsv,.txt,.dat"></label>
+  <label class="button file-button">Open Electromagnetic…<input type="file" id="electromagnetic-file" accept=".json,.csv,.tsv,.txt,.dat"></label>
+  <span class="spacer"></span>
+  <label class="button file-button">Open Calibration…<input type="file" id="calibration-file" accept=".json"></label>
+  <button id="apply-calibration" disabled title="Calibrate the magnetic data with the open calibration and open the angle window">Apply Calibration</button>
+  <button id="show-angles" disabled title="Open the window with the calibration and scan angles">Show Angles</button>
+  <button id="remove-calibration" disabled title="Show the magnetic data as read from its file">Remove Calibration</button>
+</div>
+<p id="calibration-line" class="cal-line">Calibration: none. Open an onyx calibration JSON (from the Calibration tab) to calibrate the magnetic data.</p>
+<p id="error" role="alert"></p>
+<section id="main-page" aria-label="Field magnitude">
+  <div id="main-graphs"><article class="empty">Open a magnetic and/or electromagnetic file.</article></div>
+</section>
+<section id="axis-page" aria-label="Per-axis graphs" hidden>
+  <div class="page-bar"><button id="back">← Back</button><h2 id="axis-title"></h2><button id="reset-axes">Reset Axes</button></div>
+  <div class="sliders">
+    <label for="theta">Axis orientation θ (from 3rd axis)</label><input type="range" id="theta" min="0" max="180" step="1" value="0"><output id="theta-value" for="theta">0°</output>
+    <label for="phi">φ (from 1st axis)</label><input type="range" id="phi" min="-180" max="180" step="1" value="0"><output id="phi-value" for="phi">0°</output>
+  </div>
+  <div id="axis-grid" class="axis-grid"></div>
+</section>
+<p id="status" class="status-line">Open a magnetic and/or electromagnetic file.</p>
+<p class="help">Values are in nT, converted from the unit in the column name (T, µT, nT, gauss; no unit means nT). The magnetic vector is <code>combined_field_T</code> (Earth plus anomaly) when present, else columns such as <code>Bx/By/Bz</code> or the VN-100 recording's <code>magnetic_x_gauss…</code>. The electromagnetic phasor is <code>field_T.real/imag</code> or <code>Bx_re/Bx_im</code>-style columns; its amplitude is the peak √(Re² + Im²) and its phase atan2(Im, Re). Axes are E/N/U for east-north-up files, else x/y/z. θ is the angle of the third axis from the file's third axis, φ its azimuth from the first axis; rotated axes are primed and |B| is the same in every frame. Calibration crops and calibrated CSVs open here too. <b>Apply Calibration</b> corrects the open magnetic file with the calibration JSON, C (B<sub>raw</sub> − b), and shows B east/north/up in nT (rows with a missing B or angle are dropped); the scan's yaw/pitch/roll rotate it to east/north/up when present, else the sensor is taken as level and facing north. It then opens a window with the calibration's angles (sensor mounting, Earth field, and the calibration scan's yaw/pitch/roll when the file holds them) and the yaw/pitch/roll of the open scans.</p>
+<script src="/scan-plot.js"></script><script src="/offline.js"></script><script src="/offline-calibration.js"></script></body></html>

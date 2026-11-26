@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AP230 Live Magnetic Field</title><link rel="stylesheet" href="/style.css">
+<style>
+body{max-width:1500px;padding:24px}header{gap:18px}.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:22px 0}button,select{font:inherit;font-size:13px;padding:9px 14px;background:#243b49;color:#d5eee8;border:1px solid #486172;border-radius:7px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}.readings{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.readings article{padding:18px}.readings h2{font-size:13px;margin:0 0 12px}.value{font:28px ui-monospace,monospace}.unit{font-size:14px;color:#a4b6c7}.help,#details{font-size:13px;color:#a4b6c7;line-height:1.7}.plot{margin-top:18px;padding:20px}.plot h2{font-size:17px;margin:0 0 14px}canvas{width:100%;height:260px;display:block}#total-plot,#calibrated-total-plot{height:180px}#calibrated .readings{margin-top:18px}#error{color:#ffb2bc;min-height:20px}.x{color:#7acbb6}.y{color:#73b8ff}.z{color:#f6b56b}.total{color:#d6b1ff}.legend{display:flex;gap:20px;font-size:13px;margin-bottom:12px}.frozen{color:#f6b56b}@media(max-width:650px){.readings{grid-template-columns:1fr 1fr}.value{font-size:23px}body{padding:16px}}
+</style></head><body>
+<header><div><div class="eyebrow">TERRASIGHT · THREE-AXIS FLUXGATE</div><h1>Mag - AP230</h1><p>Watch the field components change as you rotate the sensor.</p></div><span id="status" class="badge waiting" role="status">Connecting</span></header>
+<div class="controls"><button id="start">Start AP230</button><button id="stop" disabled>Pause Acquisition</button><label>History <select id="window"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="60">60 seconds</option></select></label><label><input type="checkbox" id="freeze"> Freeze Plots</label><span id="frozen" class="frozen" hidden>Plots frozen · acquisition continues</span></div>
+<p id="error" role="alert"></p>
+<section class="readings" aria-label="Latest Magnetic Field">
+<article><h2 class="x">X Component</h2><span class="value" id="x">—</span> <span class="unit">µT</span></article>
+<article><h2 class="y">Y Component</h2><span class="value" id="y">—</span> <span class="unit">µT</span></article>
+<article><h2 class="z">Z Component</h2><span class="value" id="z">—</span> <span class="unit">µT</span></article>
+<article><h2 class="total">Total Field |B|</h2><span class="value" id="total">—</span> <span class="unit">µT</span></article>
+</section>
+<p id="details">Waiting for acquisition status.</p>
+<article class="plot"><h2>Field Components</h2><div class="legend"><span class="x">X</span><span class="y">Y</span><span class="z">Z</span></div><canvas id="axes-plot" role="img" aria-label="X, Y and Z magnetic field versus time in microtesla"></canvas></article>
+<article class="plot"><h2>Total Field</h2><canvas id="total-plot" role="img" aria-label="Total magnetic field versus time in microtesla"></canvas></article>
+<article class="plot" id="live-calibration" aria-label="Live Calibration"></article>
+<section id="calibrated" hidden aria-label="Calibrated Magnetic Field">
+<section class="readings" aria-label="Latest Calibrated Magnetic Field">
+<article><h2 class="x">East</h2><span class="value" id="cal-east">—</span> <span class="unit">nT</span></article>
+<article><h2 class="y">North</h2><span class="value" id="cal-north">—</span> <span class="unit">nT</span></article>
+<article><h2 class="z">Up</h2><span class="value" id="cal-up">—</span> <span class="unit">nT</span></article>
+<article><h2 class="total">Calibrated |B|</h2><span class="value" id="cal-total">—</span> <span class="unit">nT</span></article>
+</section>
+<article class="plot"><h2>Calibrated Field Components</h2><div class="legend"><span class="x">East</span><span class="y">North</span><span class="z">Up</span></div><canvas id="calibrated-axes-plot" role="img" aria-label="Calibrated east, north and up magnetic field versus time in nanotesla"></canvas></article>
+<article class="plot"><h2>Calibrated Total Field</h2><canvas id="calibrated-total-plot" role="img" aria-label="Calibrated total magnetic field versus time in nanotesla"></canvas></article>
+</section>
+<p class="help">Rotate slowly while keeping the sensor’s center in the same place, away from steel, magnets and power supplies. X, Y and Z measure the field along the sensor’s own axes. Their values should change with orientation; total field √(X² + Y² + Z²) should stay approximately constant in a uniform field. Nearby objects and changes in position can change the total.</p>
+<p class="help">9600 baud · times are Pi receipt times · sensor axes follow the package markings · measurement accuracy and timing alignment with other sensors remain unverified. Live history is held in memory; this view does not continuously save recordings. Pausing acquisition closes the serial connection. Starting again clears the displayed history.</p>
+<p class="help">Live calibration changes only this browser's display: the AP230 has no attitude, so the calibrated field assumes a level, north-facing sensor. Raw readings above are unchanged.</p>
+<script src="/telemetry.js"></script><script src="/live-calibration.js"></script><script src="/live-calibration-sensors.js"></script><script src="/live-calibration-panel.js"></script><script src="/ap230.js"></script></body></html>
