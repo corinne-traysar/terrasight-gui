@@ -1,4 +1,3 @@
-2. [x] Please push the branch to the remote
 
 4. Create a new branch called fixing scans
 
