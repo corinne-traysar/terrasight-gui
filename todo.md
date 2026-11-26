@@ -1,4 +1,3 @@
-
 5. Create new branch called finishing cleanup
 
 6. Go over the code and check if there is still something I should migrate to onyx-demo-sims, here should only lay the endpoints and its surroundings, in the onyx-demo-sims should be the logic (the algo itself), for example, make sure that the coverting from voltage to nT isn't in this project
