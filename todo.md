@@ -1,4 +1,3 @@
-2. [x] I've received this error when trying to use a scan for calibration, what does it mean? Readings do not lie on an ellipsoid; rotate the sensor through more orientations
 
 5. Create new branch called finishing cleanup
 
