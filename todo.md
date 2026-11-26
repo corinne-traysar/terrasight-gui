@@ -1,5 +1,4 @@
-
-4. Create a new branch called fixing scans
+4. [x] Create a new branch called fixing scans
 
 5. Instead of using your own scans and clibration use this project moudles - C:\Users\omer\VisualStudioProjects\onyx-demo-sims
 
