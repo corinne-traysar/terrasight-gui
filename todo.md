@@ -1,6 +1,6 @@
 4. [x] Create a new branch called fixing scans
 
-5. Instead of using your own scans and clibration use this project moudles - C:\Users\omer\VisualStudioProjects\onyx-demo-sims
+5. Instead of using your own scans and clibration use this project moudles - C:\Users\omer\VisualStudioProjects\onyx-demo-sims. Pay attention that the data received by the imu is raw (axcelerations) and we will need to transform it to angles
 
 11. Create a new branch called adding calib to electromagnetic sensor
 
