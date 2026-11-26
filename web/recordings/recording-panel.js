@@ -9,7 +9,7 @@
     const state=service.state(sensor),count=state?.capture.samples.length||0;
     button('start').disabled=!!state?.active||!service.live(sensor)||count>0&&!state.downloaded;
     button('stop').disabled=!state?.active;button('download').disabled=!count||!!state?.active;
-    button('status').textContent=(state?.active?'Recording':count?'Stopped':'Ready')+` · ${count.toLocaleString()} sensor rows · ${state?.capture.imu.length||0} IMU samples`+(state?.capture.reason?' · '+state.capture.reason:'');
+    button('status').textContent=(state?.active?'Recording':count?'Stopped':'Ready')+` · ${count.toLocaleString()} sensor rows · ${state?.capture.imu.length||0} IMU samples · ${state?.capture.gaps||0} missed sensor blocks`+(state?.capture.reason?' · '+state.capture.reason:'');
   }
   button('start').onclick=()=>{
     try{service.next(sensor);service.start(sensor);}catch(error){button('status').textContent=error.message;}

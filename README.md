@@ -65,6 +65,14 @@ Recording is shared across browser tabs and continues through page reload/closur
 
 ## Code Organization
 
+### Download AP230 or MC95A with IMU
+
+In either instrument tab, use **Start Recording**, **Stop Recording**, then **Download Recording**. This works in the local preview as well as the live dashboard. Keep the website open; changing instrument tabs is supported. The JSON includes sensor rows and all received VN-100 groups in `imu_samples`. AP230 rows use raw XYZ in µT and associate the nearest IMU receipt within 250 ms. Missing IMU stays blank. Start VN-100 acquisition to include IMU data.
+
+MC95A downloads additionally retain received raw ADC voltage blocks in `waveforms`, sample rate, board/channel labels, gain, sensitivity and nominal 50–1,000 Hz RMS field estimates. These are browser-received data, with possible missed blocks, rather than lossless Pi recordings. A size limit stops recording before memory grows indefinitely; download before starting another. IMU association for MC95A uses an approximate browser/ADC clock offset, not hardware synchronization.
+
+Open AP230 JSON with **Open Magnetic…** in Offline Data or **Open Scan…** in Calibration. Open MC95A JSON with **Open Electromagnetic…** for independent port RMS and raw ADC plots, or **Open Scan…**, sensor **Electromagnetic**, to inspect/crop its summary channels and IMU. CSV summary crops reopen in Offline Data. MC95A S1/S2/S3 are port labels, not known vector axes: phase, vector rotation and magnetic vector calibration are unavailable for these recordings. Raw blocks remain in the original JSON; CSV crops contain only selected summary/IMU rows. Existing phasor-file workflows are unchanged.
+
 | Folder | Responsibility |
 | --- | --- |
 | `sensors/` | Runs on the Pi and owns the hardware. `vn100.py`: serial connection, framing, checksum validation, decoding, retry and bounded measurement store. `recording.py`: VN-100 CSV file lifecycle. `ap230.py` and `mc95a.py` (+ `mc95a_spectrum.py`): the other readers; `ap230_serial.py`: the AP230 row format and port setup. `ap230_capture.py` (+ `ap230_capture_session.py`) and `mc95a_capture_three.py`: standalone finite captures |

@@ -23,7 +23,8 @@ async function openScan(file){
     const contents=await readFile(file),data=await postJSON('/api/scan/load',contents);
     const columns={};for(const name of data.channels)columns[name]=numbers(data.columns[name]);
     state.file=contents;
-    state.scan={name:data.name,axis:data.axis,rows:data.rows,channels:data.channels,axisValues:numbers(data.axis_values),columns,profiles:data.profiles,attitude:data.attitude};
+    state.scan={name:data.name,axis:data.axis,rows:data.rows,channels:data.channels,axisValues:numbers(data.axis_values),columns,profiles:data.profiles,attitude:data.attitude,recordingKind:data.recording_kind};
+    if(data.recording_kind==='mc95a')$('sensor').value='electromagnetic';
     $('apply-summary').replaceChildren();
     $('badge').textContent='Scan Loaded';$('badge').className='badge live';
     buildChannelList();sensorChanged();resetWindow();drawAttitude();
@@ -113,7 +114,7 @@ async function saveCrop(){
 }
 
 function updateButtons(){
-  const loaded=!!state.scan,busy=state.busy,magnetic=sensor()==='magnetic';
+  const loaded=!!state.scan,busy=state.busy,mc95a=state.scan?.recordingKind==='mc95a',magnetic=sensor()==='magnetic'&&!mc95a;
   for(const id of ['save','apply-window','whole-scan','pick-sensor','pick-none'])$(id).disabled=busy||!loaded;
   $('save').disabled=busy||!loaded||!state.selected.size;
   $('fit').disabled=busy||!loaded||!state.fitAvailable||!magnetic||!state.selected.size;
@@ -122,7 +123,7 @@ function updateButtons(){
   $('fit-file').disabled=busy||!state.fitAvailable;$('fit-file-button').classList.toggle('disabled',$('fit-file').disabled);
   $('download-calibration').disabled=busy||!state.fitted;
   $('apply').disabled=busy||!loaded||!state.fitAvailable||!magnetic||!state.calibration;
-  const note=!state.fitAvailable?state.fitReason:!magnetic?'Calibration fitting is available for the magnetic sensor only.':'';
+  const note=!state.fitAvailable?state.fitReason:mc95a?'MC95A recordings can be inspected and cropped. Independent RMS channels do not support magnetic vector calibration.':!magnetic?'Calibration fitting is available for the magnetic sensor only.':'';
   $('fit-unavailable').textContent=note;$('fit-unavailable').hidden=!note;
 }
 

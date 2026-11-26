@@ -38,7 +38,7 @@ function magnitudeGraph(s){
   return {title:'Electromagnetic |B| (peak)',unit:'nT',traces:{'|B|':amplitudes(s.real,s.imag).map(a=>Math.hypot(...a))}};
 }
 function axisGraphs(s,thetaDeg,phiDeg){
-  if(s.scalar)return s.scalar.map(g=>({title:g.title,unit:g.unit,traces:{[g.title]:g.values}}));
+  if(s.scalar)return s.scalar.map(g=>({title:g.title,unit:g.unit,gaps:true,traces:{[g.title]:g.values}}));
   const axes=frameAxes(thetaDeg,phiDeg),names=frameLabels(s.labels,thetaDeg,phiDeg);
   if(s.sensor==='magnetic'){
     const parts=components(s.field,axes);
@@ -86,7 +86,14 @@ function drawGraph(entry){
   c.strokeStyle=THEME.frame;c.strokeRect(LEFT+.5,TOP+.5,w-RIGHT-LEFT,h-BOTTOM-TOP);
   drawHeading(c,entry,w);
   const indices=Array.from({length:count},(_,i)=>i);
-  Object.values(graph.traces).forEach((trace,i)=>strokeTrace(c,envelope(indices,trace,Math.max(Math.floor(w-LEFT-RIGHT),1)),x,y,COLORS[i%COLORS.length]));
+  Object.values(graph.traces).forEach((trace,i)=>{
+    const buckets=Math.max(Math.floor(w-LEFT-RIGHT),1),color=COLORS[i%COLORS.length];
+    if(!graph.gaps){strokeTrace(c,envelope(indices,trace,buckets),x,y,color);return;}
+    let start=0;
+    for(let end=0;end<=trace.length;end++)if(end===trace.length||!Number.isFinite(trace[end])){
+      strokeTrace(c,envelope(indices.slice(start,end),trace.slice(start,end),buckets),x,y,color);start=end+1;
+    }
+  });
   if(entry.marker!==null&&entry.marker!==undefined){
     const px=x.toPx(entry.marker);c.strokeStyle=THEME.marker;c.lineWidth=2;c.beginPath();c.moveTo(px,TOP);c.lineTo(px,h-BOTTOM);c.stroke();
   }
@@ -142,9 +149,10 @@ function showAxes(sensor,index=null){
   $('theta').value='0';$('phi').value='0';showAngles();
   for(const id of ['theta','phi','reset-axes'])$(id).disabled=!!s.scalar;
   const grid=$('axis-grid');grid.replaceChildren();grid.className='axis-grid'+(sensor==='electromagnetic'?' two':'');
-  axisEntries=axisGraphs(s,0,0).map((graph,k)=>{
+  const graphs=axisGraphs(s,0,0),rows=s.scalar?Math.ceil(graphs.length/2):ROWS;
+  axisEntries=graphs.map((graph,k)=>{
     const entry=graphEntry(grid,graph,{marker:index});
-    entry.article.style.gridRow=String(k%ROWS+1);entry.article.style.gridColumn=String(Math.floor(k/ROWS)+1);
+    entry.article.style.gridRow=String(k%rows+1);entry.article.style.gridColumn=String(Math.floor(k/rows)+1);
     return entry;
   });
   axisEntries.forEach(drawGraph);

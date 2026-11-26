@@ -49,6 +49,7 @@
     data.ap.samples.forEach((row,i)=>points.set(data.ap.samples_start_count+i,row));
     apHistory=[...points].sort((a,b)=>a[0]-b[0]).slice(-2400);
     data.ap.samples=apHistory.map(([,row])=>row);
+    data.ap.samples_start_count=apHistory[0]?.[0]??data.ap.count+1;
     data.mc.thermal_guard_active=data.health.thermal_guard_active;
     return data;
   }

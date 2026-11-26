@@ -23,8 +23,10 @@ class ScanEndpoints:
         profiles = {key: {'b_axes': list(chosen.b_axes), 'imu': list(chosen.imu)}
                     for key, chosen in ((k, p.select(data.channels)) for k, p in PROFILES.items())}
         from offline_analysis.scans.recorded_channels import RecordedChannels
-        profiles['electromagnetic']['b_axes'] += RecordedChannels.field_columns(data)
+        recorded = RecordedChannels.field_columns(data)
+        profiles['electromagnetic']['b_axes'] += recorded
         return Reply(200, dict(name=name, axis=data.axis, rows=data.rows, channels=data.channels,
+                               recording_kind='mc95a' if recorded else None,
                                axis_values=clean(data.axis_values),
                                columns={n: clean(data.column(n)) for n in data.channels},
                                profiles=profiles, attitude=AttitudeRecord.factors(data)))

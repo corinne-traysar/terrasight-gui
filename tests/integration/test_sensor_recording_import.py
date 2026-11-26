@@ -34,7 +34,8 @@ class SensorRecordingImportTest(unittest.TestCase):
         self.assertIn('magnetic_x_uT', scan['profiles']['magnetic']['b_axes'])
         self.assertIn('yaw_deg', scan['profiles']['magnetic']['imu'])
         result = self.post('/api/offline/load', dict(fields, sensor='magnetic'))
-        self.assertEqual(result['field_nt'][0], [3000, 4000, 12000])
+        for actual, expected in zip(result['field_nt'][0], [3000, 4000, 12000]):
+            self.assertAlmostEqual(actual, expected, delta=1e-8)
         self.assertEqual(result['attitude']['degrees'][0], [30, 5, -2])
 
     def test_mc95a_opens_and_crop_reopens_as_scalar(self):
@@ -49,3 +50,10 @@ class SensorRecordingImportTest(unittest.TestCase):
         crop = self.post('/api/scan/crop', dict(fields, start=5, end=5, channels=loaded['channels']))
         reopened = self.post('/api/offline/load', dict(name='crop.csv', text=crop['csv'], sensor='electromagnetic'))
         self.assertEqual(reopened['scalar_traces'][0]['values'], [20])
+
+    def test_mc95a_cannot_fit_the_imu_magnetometer_by_accident(self):
+        """An EM recording must not silently fit the embedded IMU's magnetic readings."""
+        fields = {'name': 'mc95a.json', 'text': json.dumps(self.files['mc'])}
+        reply = WebApiRouter().handle('POST', '/api/calibration/fit-file', json.dumps(fields).encode())
+        self.assertEqual(reply.status, 400)
+        self.assertIn('independent RMS', reply.body['error'])

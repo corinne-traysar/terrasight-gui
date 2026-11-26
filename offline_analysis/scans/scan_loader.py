@@ -52,12 +52,18 @@ class ScanLoader:
         """``source`` (data or a table) wrapped as the onyx scan class of ``sensor``."""
         if sensor not in SENSORS:
             raise ValueError(f'unknown sensor {sensor!r}; choose magnetic or electromagnetic')
+        if sensor == 'magnetic':
+            return ScanLoader.magnetic(source)
         table = source.table if isinstance(source, ScanData) else source
         return SENSORS[sensor].from_table(table)
 
     @staticmethod
     def magnetic(source: ScanData | ScanTable) -> MagneticScan:
         """``source`` as an onyx ``MagneticScan``; ValueError without field columns."""
+        from offline_analysis.scans.recorded_channels import RecordedChannels
+        if RecordedChannels.field_columns(source) or source.metadata.get('instrument') == 'mc95a':
+            raise ValueError('MC95A recordings contain independent RMS channels, not a magnetic vector. '
+                             'Use Electromagnetic to inspect or crop them; vector calibration is unavailable.')
         return MagneticScan.from_table(source.table if isinstance(source, ScanData) else source)
 
 
