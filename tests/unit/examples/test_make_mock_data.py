@@ -17,7 +17,9 @@ SCRIPT = Path(__file__).resolve().parents[3] / 'examples' / 'make_mock_data.py'
 if MISSING:
     raise unittest.SkipTest(MISSING)
 
-from offline_analysis.scans.scan_io import load_scan  # noqa: E402  (after the skip, like the script's imports)
+from scans import MagneticScan  # noqa: E402  (after the skip, like the script's imports)
+
+load_scan = MagneticScan.load
 
 
 def load_script():

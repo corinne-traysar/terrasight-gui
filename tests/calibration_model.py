@@ -1,7 +1,8 @@
-"""Synthetic magnetic calibration data shared by the onyx calibration tests.
+"""Synthetic magnetic calibration data shared by the onyx scan and calibration tests.
 
-Needs numpy, scipy and onyx ``calibration`` (Python 3.12+); ``MISSING`` holds the
-reason when they do not import (as on the Pi), and the tests skip with it.
+Needs numpy, scipy and onyx ``scans``, ``calibration`` and ``navigation``
+(Python 3.12+); ``MISSING`` holds the reason when they do not import (as on
+the Pi without onyx), and the tests skip with it.
 
 Synthetic model (onyx convention): raw_i = A (M^T R_i^T h) + b, in nT. ``R_i``
 takes IMU body forward/right/down to east/north/up for yaw/pitch/roll i
@@ -11,17 +12,18 @@ the distortion and ``b`` the offset. A correct calibration returns ``h`` for
 every row; 0.01 nT on a ~45,000 nT field leaves room for round-off only.
 """
 from offline_analysis.magnetic_calibration.reference import BAR_GYORA_ENU_NT
-from offline_analysis.scans.scan import Scan
 
 
 def missing_reason():
-    """None when numpy, scipy and onyx ``calibration`` import, else why not."""
+    """None when numpy, scipy and onyx ``scans``/``calibration``/``navigation`` import, else why not."""
     try:
         import numpy  # noqa: F401
         import scipy.spatial.transform  # noqa: F401
-        import offline_analysis.magnetic_calibration.magnetic_recording  # noqa: F401  (imports onyx)
+        import calibration  # noqa: F401
+        import navigation  # noqa: F401
+        import scans  # noqa: F401
     except (ImportError, SyntaxError) as error:
-        return f'numpy, scipy and onyx calibration are needed: {error}'
+        return f'numpy, scipy and onyx scans/calibration/navigation are needed: {error}'
     return None
 
 
@@ -59,19 +61,22 @@ def raw_field_nt(attitude_rad, distortion):
 
 
 def recording(with_attitude=True, distortion=None, count=60):
-    """A synthetic recording of ``count`` random orientations."""
+    """An onyx MagneticScan of ``count`` random orientations: Bx/By/Bz in nT, angles in radians."""
     import numpy as np
-    from offline_analysis.magnetic_calibration.magnetic_recording import MagneticRecording
+    from scans import MagneticScan
     distortion = model()[1] if distortion is None else distortion
     attitude = attitudes_rad(count)
-    return MagneticRecording('t', np.arange(count, dtype=float), raw_field_nt(attitude, distortion) * 1e-9,
-                             attitude if with_attitude else None, ('Bx', 'By', 'Bz'),
-                             ('yaw', 'pitch', 'roll') if with_attitude else None)
+    field = raw_field_nt(attitude, distortion)
+    columns = {'t': np.arange(count, dtype=float), 'Bx_nT': field[:, 0], 'By_nT': field[:, 1], 'Bz_nT': field[:, 2]}
+    if with_attitude:
+        columns.update(yaw_rad=attitude[:, 0], pitch_rad=attitude[:, 1], roll_rad=attitude[:, 2])
+    return MagneticScan(columns, 't')
 
 
 def scan(**columns):
-    """A scan with sample axis ``t`` = 0, 1, 2 and the given columns."""
-    return Scan('t', {'t': (0.0, 1.0, 2.0), **columns})
+    """An onyx ScanData with sample axis ``t`` = 0, 1, 2 and the given columns."""
+    from scans import ScanData
+    return ScanData({'t': (0.0, 1.0, 2.0), **columns}, 't')
 
 
 def calibration_text(with_attitude, count=80):

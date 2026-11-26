@@ -1,102 +1,94 @@
-"""Calibration files that carry their scan's attitude, and Offline Data's Apply Calibration.
+"""Tests of magnetic_calibration/calibrated_output.py: onyx-calibrated scans in nT, summaries
+and Offline Data's Apply Calibration.
 
-Needs numpy, scipy and the onyx ``calibration`` package (Python 3.12+); the
-fitting checks are skipped where they are missing, as on the Pi. The synthetic
-model is the one in tests/calibration_model.py: raw = A (M^T R^T h) + b with
-A = soft iron x misalignment and M the ENU sensor mounting. An IMU fit gives
-C = A_total^-1, whose rotation is M misalignment^T.
+Needs numpy, scipy and onyx (Python 3.12+). The synthetic model is the one in
+tests/calibration_model.py: raw = A (M^T R^T h) + b; a correct IMU calibration
+returns the Earth field h (east/north/up) on every row.
 """
-import json
+import math
 import unittest
 
 from calibration_model import MISSING, model, recording
-from offline_analysis import web_api
-from offline_analysis.magnetic_calibration.reference import BAR_GYORA_ENU_NT
+from offline_analysis.magnetic_calibration.reference import BAR_GYORA_ENU_NT, DEFAULT_REFERENCE_NT
 
 if MISSING:
     raise unittest.SkipTest(MISSING)
 
-import numpy as np  # noqa: E402  (after the skip: numpy and onyx may be missing, as on the Pi)
+import numpy as np  # noqa: E402
+from scans import MagneticScan  # noqa: E402
+
 from offline_analysis.magnetic_calibration.calibrated_output import (  # noqa: E402
-    calibration_json, parse_calibration)
+    ENU_COLUMNS, TOTAL_COLUMN, CalibratedOutput, fit_summary, offline_calibration)
+from offline_analysis.magnetic_calibration.calibration_document import CalibrationDocument  # noqa: E402
+from offline_analysis.magnetic_calibration.magnetic_calibrator import MagneticCalibrator  # noqa: E402
 
 
-class CalibrationJsonAttitudeTest(unittest.TestCase):
-    """calibration_json stores the fitted rows' yaw/pitch/roll; onyx still reads the file."""
+def fitted(count=80):
+    """A misaligned synthetic scan with attitude and the IMU calibration fitted to it."""
+    _, soft_iron, misalignment, _ = model()
+    scan = recording(True, soft_iron @ misalignment, count=count)
+    return scan, MagneticCalibrator().fit(scan)
 
-    def setUp(self):
-        from offline_analysis.magnetic_calibration.magnetic_calibrator import fit_recording
-        _, soft_iron, misalignment, _ = model()
-        self.recording = recording(True, soft_iron @ misalignment, count=80)
-        self.parameters = fit_recording(self.recording)
 
-    def test_attitude_is_embedded_in_degrees(self):
-        from offline_analysis.magnetic_calibration.calibrated_output import calibration_json
-        document = json.loads(calibration_json(self.parameters, self.recording))
-        stored = document['calibration_attitude']
-        self.assertEqual((stored['columns'], stored['axis'], len(stored['degrees'])), (['yaw', 'pitch', 'roll'], 't', 80))
-        attitude = self.recording.attitude_rad
-        assert attitude is not None
-        np.testing.assert_allclose(stored['degrees'][3], np.degrees(attitude[3]), atol=1e-3)
+class CalibratedOutputTest(unittest.TestCase):
+    """CalibratedOutput: east/north/up nT rows, CSV and summary."""
 
-    def test_onyx_reads_a_file_with_attitude(self):
-        parsed = parse_calibration(calibration_json(self.parameters, self.recording))
-        self.assertEqual((parsed.method, parsed.sample_count), ('imu', 80))
+    def test_every_row_is_the_earth_field(self):
+        scan, calibration = fitted()
+        output = CalibratedOutput(scan, calibration)
+        np.testing.assert_allclose(output.enu_nt, np.tile(BAR_GYORA_ENU_NT, (80, 1)), atol=0.01)
+        summary = output.summary()
+        self.assertEqual((summary['rows'], summary['attitude_used']), (80, True))
+        self.assertAlmostEqual(summary['b_total_mean_nt'], DEFAULT_REFERENCE_NT, delta=0.01)
 
-    def test_no_attitude_without_a_recording_or_its_angles(self):
-        self.assertNotIn('calibration_attitude', json.loads(calibration_json(self.parameters)))
-        self.assertNotIn('calibration_attitude', json.loads(calibration_json(self.parameters, recording(False))))
+    def test_rows_with_a_missing_value_are_dropped(self):
+        scan, calibration = fitted()
+        columns = {name: np.array(scan.column(name)) for name in scan.columns}
+        columns['Bx_nT'][4] = math.nan
+        output = CalibratedOutput(MagneticScan(columns, 't'), calibration)
+        self.assertEqual(output.rows, 79)
+        self.assertNotIn(4.0, list(output.data().axis_values))
+
+    def test_csv_header(self):
+        scan, calibration = fitted()
+        header = CalibratedOutput(scan, calibration).csv().splitlines()[0]
+        self.assertEqual(header, ','.join(('t', *ENU_COLUMNS, TOTAL_COLUMN)))
+
+
+class FitSummaryTest(unittest.TestCase):
+    """fit_summary reports the fit in nT."""
+
+    def test_summary_of_an_imu_fit(self):
+        scan, calibration = fitted()
+        summary = fit_summary(calibration, scan)
+        self.assertEqual((summary['method'], summary['rows']), ('imu', 80))
+        self.assertEqual(summary['b_columns'], ['Bx_nT', 'By_nT', 'Bz_nT'])
+        self.assertEqual(summary['attitude_columns'], ['yaw_rad', 'pitch_rad', 'roll_rad'])
+        np.testing.assert_allclose(summary['offset_nt'], model()[0], atol=0.01)
+        np.testing.assert_allclose(summary['earth_field_enu_nt'], BAR_GYORA_ENU_NT, atol=0.01)
 
 
 class OfflineCalibrationTest(unittest.TestCase):
-    """offline_calibration: calibrated E/N/U vectors, summary and angles for one scan.
-
-    The /api/offline/calibrate endpoint around it is covered in integration/test_offline_calibrate_flow.py.
-    """
+    """offline_calibration: vectors, summary and angles for the Offline Data view."""
 
     def setUp(self):
-        from offline_analysis.magnetic_calibration.magnetic_calibrator import fit_recording
-        _, soft_iron, misalignment, _ = model()
-        self.recording = recording(True, soft_iron @ misalignment, count=80)
-        self.text = calibration_json(fit_recording(self.recording), self.recording)
+        self.scan, calibration = fitted()
+        self.text = CalibrationDocument.text(calibration, self.scan)
 
-    def scan(self, with_attitude=True):
-        """The synthetic recording back as a scan in nT and degrees."""
-        from offline_analysis.scans.scan import Scan
-        columns = {'t': tuple(self.recording.axis_values.tolist())}
-        columns.update({name: tuple((self.recording.field_t[:, k] * 1e9).tolist()) for k, name in enumerate(('Bx', 'By', 'Bz'))})
-        if with_attitude:
-            attitude = self.recording.attitude_rad
-            assert attitude is not None
-            columns.update({name: tuple(np.degrees(attitude[:, k]).tolist())
-                            for k, name in enumerate(('yaw_deg', 'pitch_deg', 'roll_deg'))})
-        return Scan('t', columns)
-
-    def test_vectors_are_the_earth_field_and_labels_enu(self):
-        from offline_analysis.magnetic_calibration.calibrated_output import offline_calibration
-        result = offline_calibration(self.text, self.scan())
-        self.assertEqual((result['count'], result['labels'], result['b_columns']), (80, ['E', 'N', 'U'], ['Bx', 'By', 'Bz']))
+    def test_vectors_labels_and_angles(self):
+        result = offline_calibration(self.text, self.scan)
+        self.assertEqual((result['count'], result['labels'], result['b_columns']),
+                         (80, ['E', 'N', 'U'], ['Bx_nT', 'By_nT', 'Bz_nT']))
         np.testing.assert_allclose(result['field_nt'], np.tile(BAR_GYORA_ENU_NT, (80, 1)), atol=0.01)
-        self.assertTrue(result['summary']['attitude_used'])
-
-    def test_angles_come_from_the_same_document(self):
-        from offline_analysis.magnetic_calibration.calibrated_output import offline_calibration
-        angles = offline_calibration(self.text, self.scan())['calibration']
-        self.assertEqual((angles['method'], angles['sample_count']), ('imu', 80))
-        self.assertEqual(angles['attitude']['columns'], ['yaw', 'pitch', 'roll'])
-        self.assertAlmostEqual(angles['earth']['total_nt'], web_api.DEFAULT_REFERENCE_NT, delta=0.01)
+        self.assertEqual((result['calibration']['method'], result['calibration']['sample_count']), ('imu', 80))
 
     def test_scan_without_attitude_is_taken_as_level(self):
-        from offline_analysis.magnetic_calibration.calibrated_output import offline_calibration
-        self.assertFalse(offline_calibration(self.text, self.scan(False))['summary']['attitude_used'])
+        level = recording(False)
+        self.assertFalse(offline_calibration(self.text, level)['summary']['attitude_used'])
 
-    def test_errors(self):
-        from offline_analysis.magnetic_calibration.calibrated_output import offline_calibration
-        from offline_analysis.scans.scan import Scan
+    def test_bad_calibration_raises(self):
         with self.assertRaisesRegex(ValueError, 'not a onyx-vector-calibration/1'):
-            offline_calibration('{"format": "x"}', self.scan())
-        with self.assertRaisesRegex(ValueError, 'no magnetic B-field'):
-            offline_calibration(self.text, Scan('t', {'t': (0.0,), 'temp': (1.0,)}))
+            offline_calibration('{"format": "x"}', self.scan)
 
 
 if __name__ == '__main__':

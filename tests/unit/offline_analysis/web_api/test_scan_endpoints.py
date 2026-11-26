@@ -1,12 +1,18 @@
 """Tests of web_api/scan_endpoints.py: loading, cropping and viewing scans through the API.
+
+Needs onyx (the endpoints answer 503 without it; see test_router.py).
 """
 import json
 import unittest
 
-from api_helpers import post
-from offline_analysis.scans.scan import Scan
-from offline_analysis.web_api.scan_endpoints import ScanEndpoints
+from api_helpers import FIT_AVAILABLE, post
 from analysis_helpers import em_json, mag_scan, vn100_scan
+from imu_helpers import raw_magnetic_text
+from offline_analysis.web_api.request_fields import RequestFields
+from offline_analysis.web_api.scan_endpoints import ScanEndpoints
+
+if not FIT_AVAILABLE:
+    raise unittest.SkipTest('needs numpy and the onyx scans package')
 
 
 class ScanEndpointsTest(unittest.TestCase):
@@ -31,7 +37,16 @@ class ScanEndpointsTest(unittest.TestCase):
         self.assertEqual(body['axis'], 'received_utc')
         self.assertEqual(body['profiles']['magnetic']['b_axes'],
                          ['magnetic_x_gauss', 'magnetic_y_gauss', 'magnetic_z_gauss'])
-        self.assertEqual(body['attitude'], {'columns': ['yaw_deg', 'pitch_deg', 'roll_deg'], 'to_degrees': [1.0, 1.0, 1.0]})
+        self.assertEqual(body['attitude'], {'columns': ['yaw_deg', 'pitch_deg', 'roll_deg'], 'to_degrees': [1.0, 1.0, 1.0],
+                                            'derived': None})
+
+    def test_load_raw_imu_scan_reports_derived_angles(self):
+        body = post('/api/scan/load', {'name': 'raw.csv', 'text': raw_magnetic_text()}).body
+        attitude = body['attitude']
+        self.assertEqual(attitude['columns'], ['imu_yaw_rad', 'imu_pitch_rad', 'imu_roll_rad'])
+        self.assertEqual(attitude['derived']['source'], 'gyroscope')
+        self.assertIn('imu_yaw_rad', body['profiles']['magnetic']['imu'])
+        self.assertAlmostEqual(body['columns']['imu_yaw_rad'][-1], 1.0, delta=1e-9)  # 0.1 rad/s for 10 s
 
     def test_load_reports_attitude_in_degrees_or_none(self):
         text = 't,Bx,By,Bz,yaw_rad,pitch,roll\n0,1,2,3,0.1,0.2,0.3\n1,1,2,3,0.2,0.3,0.4\n'
@@ -52,19 +67,37 @@ class ScanEndpointsTest(unittest.TestCase):
     def test_offline_load_electromagnetic(self):
         body = post('/api/offline/load', {'sensor': 'electromagnetic', 'name': 'em.json', 'text': em_json(3)}).body
         self.assertEqual(body['count'], 3)
-        self.assertEqual(body['real_nt'][2], [2e9, 4e9, 6e9])
-        self.assertEqual(body['imag_nt'][2], [-2e9, 0.0, 0.0])
+        # field_T real = [2, 4, 6] T and imag = [-2, 0, 0] T at row 2, sent in nT (1 nT = 1e-9 T).
+        for got, want in zip(body['real_nt'][2] + body['imag_nt'][2], [2e9, 4e9, 6e9, -2e9, 0.0, 0.0]):
+            self.assertAlmostEqual(got, want, delta=1e-3)
 
-class AttitudeTests(unittest.TestCase):
-    """ScanEndpoints.attitude: yaw/pitch/roll columns and their factors to degrees."""
 
-    def test_radian_columns_get_180_over_pi_and_missing_angles_give_none(self):
-        scan = Scan('t', {'t': (0.0, 1.0), 'yaw_rad': (0.1, 0.2), 'pitch_rad': (0.0, 0.1), 'roll_rad': (0.0, 0.0)})
-        attitude = ScanEndpoints.attitude(scan) or {}
-        self.assertEqual(attitude.get('columns'), ['yaw_rad', 'pitch_rad', 'roll_rad'])
-        for factor in attitude.get('to_degrees', []):
-            self.assertAlmostEqual(factor, 57.29577951308232, delta=1e-9)  # 180 / pi
-        self.assertIsNone(ScanEndpoints.attitude(Scan('t', {'t': (0.0,), 'Bx': (1.0,)})))
+class DirectCallTest(unittest.TestCase):
+    """ScanEndpoints methods called with RequestFields, without the router."""
+
+    def test_load_reply_fields(self):
+        reply = ScanEndpoints.load(RequestFields({'name': 'scan.csv', 'text': mag_scan()}))
+        self.assertEqual(reply.status, 200)
+        self.assertEqual(sorted(reply.body), ['attitude', 'axis', 'axis_values', 'channels', 'columns', 'name',
+                                              'profiles', 'rows'])
+        self.assertEqual(reply.body['axis_values'][:3], [0.0, 1.0, 2.0])
+
+    def test_crop_counts_rows_and_channels(self):
+        # Window [0, 10] keeps all 11 rows (time 0..10 s); two channels are kept.
+        fields = RequestFields({'name': 'scan.csv', 'text': mag_scan(), 'start': 0, 'end': 10,
+                                'channels': ['Bx [nT]', 'By [nT]']})
+        body = ScanEndpoints.crop(fields).body
+        self.assertEqual((body['rows'], body['channels']), (11, 2))
+        self.assertEqual(body['csv'].splitlines()[0], 'time [s],Bx [nT],By [nT]')
+
+    def test_offline_magnetic_vectors_in_nt(self):
+        fields = RequestFields({'sensor': 'magnetic', 'name': 'scan.csv', 'text': mag_scan()})
+        body = ScanEndpoints.offline(fields).body
+        self.assertEqual((body['sensor'], body['count'], body['field_nt'][2]), ('magnetic', 11, [200.0, -2.0, 5.0]))
+
+    def test_unknown_sensor_raises_for_the_router_to_answer_400(self):
+        with self.assertRaisesRegex(ValueError, 'unknown sensor'):
+            ScanEndpoints.offline(RequestFields({'sensor': 'gravity', 'name': 'scan.csv', 'text': mag_scan()}))
 
 
 if __name__ == '__main__':

@@ -1,11 +1,12 @@
-"""Pick the sample axis, the B-axis channels and the IMU channels of a scan by name.
+"""Pre-select the B-axis and IMU channels of a scan per sensor type, for the Calibration view.
 
-Names are matched case-insensitively after a trailing unit such as ``[nT]`` or
-``(s)`` is removed. A magnetic sensor reports one static field value per axis
-(``Bx``, ``mag_y``, ``field_T_2``, ``magnetic_x_gauss``); an electromagnetic
-sensor reports per-axis phasor parts, amplitude or phase (``Bx_re``,
-``field_T_real_0``, ``strength_T_1``, ``theta_rad_2``). IMU channels are shared
-by both sensors.
+These are suggestions for the channel list the user can change; onyx's own
+scan classes find the field columns they calibrate. Names are compared after
+onyx ``normalize`` (lower case, trailing ``[unit]`` removed). A magnetic
+sensor reports one static value per axis (``Bx``, ``mag_y``, ``field_T_2``,
+``magnetic_x_gauss``); an electromagnetic sensor per-axis phasor parts,
+amplitude or phase (``Bx_re``, ``field_T_real_0``, ``strength_T_1``,
+``theta_rad_2``). IMU channels (raw readings and angles) are shared.
 """
 from __future__ import annotations
 
@@ -14,34 +15,18 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterable, Tuple
 
+from scans.columns.channels import normalize
+
 _SEP = r'[_.\- ]*'
 _AXIS = r'(x|y|z|e|n|u|east|north|up|[012])'
 _PART = r'(real|imag|re|im|amp|amplitude|mag|magnitude|abs|phase|i|q)'
 _IMU = re.compile(r'(^|[_.\- ])((imu|acc|gyr|quat|euler|orient|incl|tilt|omega|angular)[a-z]*'
                   r'|roll|pitch|yaw|heading|q[wxyz0-3]|[agw][xyz])(?=$|[_.\- 0-9])')
-# ``received_utc`` / ``received_ms`` are the Pi receipt times of the VN-100 CSV recordings.
-_AXIS_NAMES = (re.compile(r'^(time|timestamp|t|received)(_[a-z]+)?$'), re.compile(r'^distance(_m)?$'),
-               re.compile(r'^(s|s_m)$'), re.compile(r'^(source_index|sample|index|row)$'))
-
-
-def normalize(name: str) -> str:
-    """Lower-case ``name`` and drop a trailing bracketed unit: ``'Bx [nT]'`` -> ``'bx'``."""
-    return re.sub(r'\s*[\[(][^\])]*[\])]\s*$', '', name).strip().lower()
 
 
 def is_imu(name: str) -> bool:
     """True when ``name`` is an accelerometer, gyroscope or orientation channel."""
     return bool(_IMU.search(normalize(name)))
-
-
-def find_axis(names: Iterable[str]) -> str | None:
-    """Return the best sample-axis column (time first, then distance, then index), or None."""
-    names = list(names)
-    for pattern in _AXIS_NAMES:
-        for name in names:
-            if pattern.match(normalize(name)):
-                return name
-    return None
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 """Generate the mock magnetic scan and calibration file in this folder.
 
-Run with the onyx ``calibration`` package and numpy/scipy importable, e.g.
-``PYTHONPATH=../onyx-demo-sims python examples/make_mock_data.py``. Writes:
+Run with the onyx ``scans``, ``calibration`` and ``navigation`` packages and
+numpy/scipy importable, e.g. ``.venv/bin/python examples/make_mock_data.py``. Writes:
 
 ``mock_calibration_tumble.csv``  a sensor rotated through many attitudes (the fit input)
 ``mock_calibration.json``        the onyx IMU calibration fitted to that tumble
@@ -20,14 +20,12 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))
 
-from calibration import save_parameters  # noqa: E402
 from calibration.attitude import body_to_enu  # noqa: E402
-from offline_analysis.magnetic_calibration.calibrated_output import calibration_json  # noqa: E402
-from offline_analysis.magnetic_calibration.magnetic_calibrator import fit_recording  # noqa: E402
-from offline_analysis.magnetic_calibration.magnetic_recording import read_recording  # noqa: E402
+from scans import MagneticScan  # noqa: E402
+
+from offline_analysis.magnetic_calibration.calibration_document import CalibrationDocument  # noqa: E402
+from offline_analysis.magnetic_calibration.magnetic_calibrator import MagneticCalibrator  # noqa: E402
 from offline_analysis.magnetic_calibration.reference import BAR_GYORA_ENU_NT  # noqa: E402
-from offline_analysis.scans.scan import Scan  # noqa: E402
-from offline_analysis.scans.scan_io import save_scan  # noqa: E402
 
 EARTH_ENU_NT = np.array(BAR_GYORA_ENU_NT)
 OFFSET_NT = np.array([850.0, -1200.0, 600.0])
@@ -41,14 +39,14 @@ def raw_reading(field_enu_nt: np.ndarray, attitude_rad: np.ndarray, rng: np.rand
     return body @ DISTORTION.T + OFFSET_NT + rng.normal(0, NOISE_NT, body.shape)
 
 
-def scan_of(time_s: np.ndarray, field_nt: np.ndarray, attitude_rad: np.ndarray) -> Scan:
-    """A scan with time, Bx/By/Bz in nT and yaw/pitch/roll in degrees."""
-    columns = {'time_s': tuple(time_s.tolist())}
+def scan_of(time_s: np.ndarray, field_nt: np.ndarray, attitude_rad: np.ndarray) -> MagneticScan:
+    """An onyx magnetic scan with time, Bx/By/Bz in nT and yaw/pitch/roll in degrees."""
+    columns = {'time_s': time_s}
     for k, axis in enumerate('xyz'):
-        columns[f'B{axis}_nT'] = tuple(field_nt[:, k].tolist())
+        columns[f'B{axis}_nT'] = field_nt[:, k]
     for k, name in enumerate(('yaw', 'pitch', 'roll')):
-        columns[f'{name}_deg'] = tuple(np.degrees(attitude_rad[:, k]).tolist())
-    return Scan('time_s', columns)
+        columns[f'{name}_deg'] = np.degrees(attitude_rad[:, k])
+    return MagneticScan(columns, 'time_s')
 
 
 def main() -> None:
@@ -57,9 +55,9 @@ def main() -> None:
     n = 600
     tumble = np.column_stack([rng.uniform(-np.pi, np.pi, n), rng.uniform(-1.2, 1.2, n), rng.uniform(-np.pi, np.pi, n)])
     tumble_scan = scan_of(np.arange(n) * 0.1, raw_reading(np.tile(EARTH_ENU_NT, (n, 1)), tumble, rng), tumble)
-    save_scan(tumble_scan, ROOT / 'mock_calibration_tumble.csv', overwrite=True)
-    recording = read_recording(tumble_scan)
-    (ROOT / 'mock_calibration.json').write_text(calibration_json(fit_recording(recording), recording))
+    tumble_scan.save(ROOT / 'mock_calibration_tumble.csv', overwrite=True)
+    calibration = MagneticCalibrator().fit(tumble_scan)
+    (ROOT / 'mock_calibration.json').write_text(CalibrationDocument.text(calibration, tumble_scan))
 
     m = 1200
     time_s = np.arange(m) * 0.1
@@ -69,7 +67,7 @@ def main() -> None:
     walk = np.column_stack([np.radians(40) + 0.15 * np.sin(time_s / 7), 0.08 * np.sin(time_s / 3),
                             0.1 * np.sin(time_s / 5)])
     survey = scan_of(time_s, raw_reading(EARTH_ENU_NT + anomaly, walk, rng), walk)
-    save_scan(survey, ROOT / 'mock_scan.csv', overwrite=True)
+    survey.save(ROOT / 'mock_scan.csv', overwrite=True)
 
 
 if __name__ == '__main__':

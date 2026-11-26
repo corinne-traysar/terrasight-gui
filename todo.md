@@ -1,12 +1,8 @@
-4. [x] Create a new branch called fixing scans
+5. [x] Instead of using your own scans and clibration use this project moudles - C:\Users\omer\VisualStudioProjects\onyx-demo-sims. Pay attention that the data received by the imu is raw (axcelerations) and we will need to transform it to angles
 
-5. Instead of using your own scans and clibration use this project moudles - C:\Users\omer\VisualStudioProjects\onyx-demo-sims. Pay attention that the data received by the imu is raw (axcelerations) and we will need to transform it to angles
+6. Go over the code and check if there is still something I should migrate to onyx-demo-sims, here should only lay the endpoints and its surroundings, in the onyx-demo-sims should be the logic (the algo itself)
 
-11. Create a new branch called adding calib to electromagnetic sensor
-
-12. Make sure the code is written in good OOP, in a way that it would make it easy to add new sensors to the website (online/offline data and calibration)
-
-13. Make the calibration also avalible to the electromagnetic sensor. Make it possible to extract a calbiration file from a saved scan, apply it to a certain scan file.
+7. This project should only be a wrapper to display the data, nothing else should be added, no algo for detecting, calibrations, saving/ reading scans etc add this to your rules so everyone using this repo will follow them (not only me)
 
 14. Create a new branch called gui improvement
 

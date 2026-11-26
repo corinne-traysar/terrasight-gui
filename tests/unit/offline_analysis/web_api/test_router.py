@@ -1,19 +1,30 @@
 """Tests of web_api/router.py: which requests the API answers and how mistakes are reported.
 """
 import unittest
+from unittest.mock import patch
 
-from api_helpers import post
+from api_helpers import FIT_AVAILABLE, post
 from offline_analysis import web_api
-from offline_analysis.web_api.router import NEEDS_CALIBRATION, POST_ROUTES, WebApiRouter
+from offline_analysis.web_api.calibration_endpoints import CalibrationEndpoints
+from offline_analysis.web_api.router import NEEDS_ONYX, POST_ROUTES, WebApiRouter
 from analysis_helpers import mag_scan
 
 
 class RouterTest(unittest.TestCase):
     """web_api.handle and web_api.handles without a server."""
 
+    def test_every_post_is_503_with_the_reason_without_onyx(self):
+        with patch.object(CalibrationEndpoints, 'support', return_value=(False, 'needs onyx')):
+            for path in POST_ROUTES:
+                with self.subTest(path=path):
+                    reply = post(path, {'name': 'scan.csv', 'text': mag_scan()})
+                    self.assertEqual((reply.status, reply.body['error']), (503, 'needs onyx'))
+            self.assertEqual(web_api.handle('GET', '/api/calibration/status').status, 200)
+
+    @unittest.skipUnless(FIT_AVAILABLE, 'needs numpy and the onyx scans package')
     def test_client_mistakes_are_400_with_a_message(self):
         cases = [('/api/scan/crop', {'name': 'scan.csv', 'text': mag_scan(), 'start': 1.2, 'end': 1.8,
-                                     'channels': ['Bx [nT]']}, 'no samples'),
+                                     'channels': ['Bx [nT]']}, 'no sample'),
                  ('/api/scan/crop', {'name': 'scan.csv', 'text': mag_scan(), 'start': 0, 'end': 1,
                                      'channels': 'Bx'}, 'channels must be a list'),
                  ('/api/scan/crop', {'name': 'scan.csv', 'text': mag_scan(), 'start': 'a', 'end': 1,
@@ -43,7 +54,7 @@ class WebApiRouterTests(unittest.TestCase):
         router = WebApiRouter()
         self.assertTrue(router.handles('GET', '/api/calibration/status?cache=no'))
         self.assertFalse(router.handles('PUT', '/api/scan/load'))
-        self.assertTrue(NEEDS_CALIBRATION <= set(POST_ROUTES), 'every onyx route is a POST route')
+        self.assertTrue(NEEDS_ONYX <= set(POST_ROUTES), 'every onyx route is a POST route')
         self.assertEqual(router.handle('POST', '/api/unknown', b'{}').status, 404)
 
 

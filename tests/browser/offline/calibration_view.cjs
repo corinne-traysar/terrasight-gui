@@ -72,6 +72,11 @@ async function view(answers) {
   assert.deepEqual(node('attitude-plot').context.texts(), ['The calibration window contains no rows']);
   node('attitude-plot').context.reset(); node('whole-scan').onclick();
   assert.ok(node('attitude-plot').context.texts().includes('time [s]'), 'the attitude plot follows the window');
+  assert.equal(node('attitude-note').hidden, true, "the file's own angles need no note");
+  // Angles the server computed from a raw IMU say so, and what their yaw means.
+  run("state.scan.attitude.derived={source:'gyroscope',columns:['acc_x','gyro_x'],yaw:'relative to the first row',note:''};drawAttitude()");
+  assert.equal(text('attitude-note'), 'These angles were computed from the raw IMU (gyroscope, acc_x, gyro_x); yaw is relative to the first row.');
+  run("state.scan.attitude.derived=null");
   console.log('PASS: strips, legend, ticks, shaded window, dragging and attitude plot');
 
   // Opening a calibration file, then applying it to the open scan.

@@ -83,6 +83,12 @@ function attitudeWindow(){
 
 function attitudeNote(text){$('attitude-note').textContent=text||'';$('attitude-note').hidden=!text;}
 
+/* How the server computed yaw/pitch/roll from a raw IMU (accelerometer/gyroscope), or '' for the file's own angles. */
+function derivedNote(derived){
+  if(!derived)return '';
+  return `These angles were computed from the raw IMU (${derived.source}, ${derived.columns.join(', ')}); yaw is ${derived.yaw}.${derived.note?` Note: ${derived.note}.`:''}`;
+}
+
 function drawAttitude(){
   if($('attitude-panel').hidden||!state.scan)return;
   const a=state.scan.attitude,setup=setupCanvas($('attitude-plot'));
@@ -101,7 +107,7 @@ function drawAttitude(){
     return item;
   }));
   const unselected=a.columns.filter(name=>!state.selected.has(name));
-  attitudeNote(unselected.length?`${unselected.join(', ')} ${unselected.length>1?'are':'is'} not selected, so the window calibration will not use yaw/pitch/roll (Auto then picks the ellipsoid method).`:'');
+  attitudeNote([derivedNote(a.derived),unselected.length?`${unselected.join(', ')} ${unselected.length>1?'are':'is'} not selected, so the window calibration will not use yaw/pitch/roll (Auto then picks the ellipsoid method).`:''].filter(Boolean).join(' '));
   if(!setup)return;
   if(!x.length){emptyPlot(setup,'The calibration window contains no rows');return;}
   drawAngles(setup,x,angles,state.scan.axis);
